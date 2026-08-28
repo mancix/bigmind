@@ -1,0 +1,48 @@
+# BigMind API — systemd unit
+#
+# Usage (see docs/deploy-debian.md):
+#   1. Build the API:  pnpm exec nx run @bigmind/api:build
+#   2. Copy artifacts to /opt/bigmind
+#   3. Create /etc/bigmind/bigmind.env with the real environment values
+#   4. Install this unit:
+#        sudo cp deploy/bigmind-api.service /etc/systemd/system/
+#        sudo systemctl daemon-reload
+#        sudo systemctl enable --now bigmind-api
+
+[Unit]
+Description=BigMind Sync API (NestJS)
+Documentation=file:///opt/bigmind/docs/deploy-debian.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=bigmind
+Group=bigmind
+WorkingDirectory=/opt/bigmind
+EnvironmentFile=/etc/bigmind/bigmind.env
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=768
+ExecStart=/usr/bin/node /opt/bigmind/apps/api/dist/main.js
+Restart=always
+RestartSec=3
+
+# Keep this NestJS service well-bounded on a modest box.
+LimitNOFILE=4096
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+PrivateDevices=true
+ReadWritePaths=/opt/bigmind
+
+[Install]
+WantedBy=multi-user.target

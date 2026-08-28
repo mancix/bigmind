@@ -4,6 +4,12 @@ BigMind is a local-first personal knowledge base for capturing, editing, and sea
 
 The repository is an Nx monorepo built around a platform-independent domain library, shared runtime-validated API contracts, a React PWA, and a NestJS backend.
 
+## License
+
+BigMind is free software released under the **GNU Affero General Public License v3 (AGPL-3.0-or-later)**. You may redistribute and modify it under the terms of the AGPLv3, which requires that modified versions of the software, when run over a network, make their source code available to users.
+
+See [LICENSE](LICENSE) for the full license text.
+
 ## Current features
 
 ### Notes
@@ -645,6 +651,7 @@ For detailed guides and reference documentation, see:
 - [Architecture Overview](docs/architecture.md): Technical architecture of BigMind.
 - [Database Schema](docs/database-schema.md): Database schema and Drizzle ORM layout.
 - [Template System](docs/template-system.md): Note template types, how they work, and how to add new templates.
+- [Deploy on Debian](docs/deploy-debian.md): Production deployment on a modest home server (PostgreSQL native + systemd + Caddy), with tuning for low-power hardware.
 
 ### Template System
 

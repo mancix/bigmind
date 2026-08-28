@@ -1,7 +1,7 @@
 {
   "name": "@bigmind/source",
   "version": "0.0.0",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "db:start": "docker compose up -d postgres",
     "db:stop": "docker compose down",

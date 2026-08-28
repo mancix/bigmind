@@ -1,0 +1,35 @@
+# BigMind — Caddy configuration
+#
+# Serves the built web app and proxies /api to the NestJS backend on :3000.
+# Compression (zstd+gzip) and static caching are enabled.
+#
+# Usage:
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Replace "http://bigmind.local" with the hostname/IP you reach the box from
+# (e.g. http://192.168.1.50). For a public domain, use "example.com" and
+# Caddy will obtain TLS automatically.
+
+http://bigmind.local {
+	encode zstd gzip
+
+	# API reverse proxy.
+	# The web client targets VITE_API_URL=http://host/api, so /api is stripped
+	# before forwarding to the NestJS app (which serves /health, /sync/*, ...).
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Static web app (PWA)
+	root * /opt/bigmind/apps/web/dist
+	try_files {path} /index.html
+
+	# Hashed assets are immutable; the service worker and app shell are not cached.
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+	header /manifest.webmanifest Cache-Control "no-cache"
+	header /sw.js Cache-Control "no-cache"
+
+	file_server
+}

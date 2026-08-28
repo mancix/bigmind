@@ -1,0 +1,9 @@
+[Unit]
+Description=BigMind database maintenance (weekly VACUUM, monthly REINDEX)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bigmind-maintenance.sh
+# The maintenance job talks to Postgres as the bigmind system user.
+User=bigmind
+Group=bigmind

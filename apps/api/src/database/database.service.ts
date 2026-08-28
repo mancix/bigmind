@@ -15,6 +15,10 @@ export class DatabaseService implements OnModuleDestroy {
     connectionString:
       process.env.DATABASE_URL ??
       'postgresql://bigmind:bigmind@localhost:5432/bigmind',
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    application_name: 'bigmind-api',
   });
 
   readonly db: Database = drizzle({
