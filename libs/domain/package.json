@@ -1,0 +1,74 @@
+{
+  "name": "@bigmind/domain",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@bigmind/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./categories": {
+      "@bigmind/source": "./src/categories/index.ts",
+      "types": "./dist/categories/index.d.ts",
+      "import": "./dist/categories.js",
+      "default": "./dist/categories.js"
+    },
+    "./notes": {
+      "@bigmind/source": "./src/notes/index.ts",
+      "types": "./dist/notes/index.d.ts",
+      "import": "./dist/notes.js",
+      "default": "./dist/notes.js"
+    },
+    "./conflicts": {
+      "@bigmind/source": "./src/conflicts/index.ts",
+      "types": "./dist/conflicts/index.d.ts",
+      "import": "./dist/conflicts.js",
+      "default": "./dist/conflicts.js"
+    },
+    "./links": {
+      "@bigmind/source": "./src/links/index.ts",
+      "types": "./dist/links/index.d.ts",
+      "import": "./dist/links.js",
+      "default": "./dist/links.js"
+    },
+    "./sync": {
+      "@bigmind/source": "./src/sync/index.ts",
+      "types": "./dist/sync/index.d.ts",
+      "import": "./dist/sync.js",
+      "default": "./dist/sync.js"
+    },
+    "./todos": {
+      "@bigmind/source": "./src/todos/index.ts",
+      "types": "./dist/todos/index.d.ts",
+      "import": "./dist/todos.js",
+      "default": "./dist/todos.js"
+    },
+    "./reminders": {
+      "@bigmind/source": "./src/reminders/index.ts",
+      "types": "./dist/reminders/index.d.ts",
+      "import": "./dist/reminders.js",
+      "default": "./dist/reminders.js"
+    },
+    "./notifications": {
+      "@bigmind/source": "./src/notifications/index.ts",
+      "types": "./dist/notifications/index.d.ts",
+      "import": "./dist/notifications.js",
+      "default": "./dist/notifications.js"
+    }
+  },
+  "nx": {
+    "name": "@bigmind/domain",
+    "tags": [
+      "type:domain",
+      "platform:shared"
+    ]
+  },
+  "dependencies": {}
+}

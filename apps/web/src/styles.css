@@ -1,0 +1,175 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Mindful Utility — Material 3 blue palette (from Stitch) */
+  --color-blue-50: #eef2ff;
+  --color-blue-100: #dbe1ff;
+  --color-blue-200: #bfd0ff;
+  --color-blue-300: #8fa8ff;
+  --color-blue-400: #5a76e0;
+  --color-blue-500: #3265e0;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #004ac6;
+  --color-blue-800: #003a9e;
+  --color-blue-900: #002b75;
+
+  /* Cool neutral surfaces matching the blue-tinted canvas */
+  --color-slate-50: #f7f9fb;
+  --color-slate-100: #f2f4f6;
+  --color-slate-200: #e0e3e5;
+  --color-slate-300: #c3c6d7;
+  --color-slate-400: #737686;
+  --color-slate-500: #434655;
+  --color-slate-600: #2d3133;
+  --color-slate-700: #191c1e;
+  --color-slate-800: #14161a;
+  --color-slate-900: #0d0f11;
+
+  /* Material 3 semantic tokens (1:1 with Stitch screens) */
+  --color-primary: #004ac6;
+  --color-primary-container: #2563eb;
+  --color-primary-fixed: #dbe1ff;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #eeefff;
+  --color-secondary: #505f76;
+  --color-secondary-fixed: #d3e4fe;
+  --color-secondary-container: #d0e1fb;
+  --color-on-secondary-container: #54647a;
+  --color-tertiary: #943700;
+  --color-tertiary-container: #bc4800;
+  --color-tertiary-fixed: #ffdbcd;
+  --color-on-tertiary-fixed: #360f00;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-surface: #f7f9fb;
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f2f4f6;
+  --color-surface-container: #eceef0;
+  --color-surface-high: #e6e8ea;
+  --color-surface-highest: #e0e3e5;
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #434655;
+  --color-outline: #737686;
+  --color-outline-variant: #c3c6d7;
+
+  /* Shape scale — ROUND_FOUR (from Stitch design system) */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-sans);
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined', sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  user-select: none;
+}
+
+.wiki-link {
+  color: var(--color-primary);
+  background-color: var(--color-primary-fixed);
+  padding: 0 4px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-outline-variant);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-outline);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.header-safe {
+  top: env(safe-area-inset-top, 0px);
+}
+
+.bigmind-editor .milkdown {
+  min-height: 60vh;
+  background: transparent;
+
+  /* Align Crepe (Milkdown) to the Mindful Utility blue palette */
+  --crepe-color-background: #ffffff;
+  --crepe-color-on-background: #191c1e;
+  --crepe-color-surface: #f2f4f6;
+  --crepe-color-surface-low: #e6e8ea;
+  --crepe-color-on-surface: #191c1e;
+  --crepe-color-on-surface-variant: #434655;
+  --crepe-color-outline: #c3c6d7;
+  --crepe-color-primary: #004ac6;
+  --crepe-color-secondary: #dbe1ff;
+  --crepe-color-on-secondary: #00174b;
+  --crepe-color-inverse: #2d3133;
+  --crepe-color-on-inverse: #eff1f3;
+  --crepe-color-inline-code: #ba1a1a;
+  --crepe-color-error: #ba1a1a;
+  --crepe-color-hover: #e0e3e5;
+  --crepe-color-selected: #dbe1ff;
+  --crepe-color-inline-area: #eceef0;
+
+  --crepe-font-title: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --crepe-font-default: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+.bigmind-editor .ProseMirror {
+  min-height: 60vh;
+  padding: 0;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: var(--color-on-surface);
+}
+
+.bigmind-editor .ProseMirror > :first-child {
+  margin-top: 0;
+}

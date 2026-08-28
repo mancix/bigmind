@@ -1,107 +1,717 @@
-# New Nx Repository
+# BigMind
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+BigMind is a local-first personal knowledge base for capturing, editing, and searching Markdown notes. The web application stores notes in the browser first, remains usable offline, and can synchronize local changes with a PostgreSQL-backed API when the HTTP transport is enabled.
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+The repository is an Nx monorepo built around a platform-independent domain library, shared runtime-validated API contracts, a React PWA, and a NestJS backend.
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/docs/technologies/typescript/introduction?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
-🚀 If you haven't connected to Nx Cloud yet, [complete your setup here](https://cloud.nx.app/get-started). Get faster builds with remote caching, distributed task execution, and self-healing CI. [See how your workspace can benefit](#nx-cloud).
-## Generate a library
+## Current features
 
-```sh
-npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
+### Notes
+
+- Create, edit, search, and delete notes.
+- Full-text search across all notes using MiniSearch, with case-insensitive matching, partial word (prefix) support, fuzzy search, and relevance scoring.
+- Rich Markdown editing powered by Milkdown Crepe.
+- Automatic title normalization with an `Untitled note` fallback.
+- Plain-text previews generated from Markdown content.
+- Debounced autosave with visible local-save state.
+- Sidebar ordered by the most recently updated note.
+- Command palette for quickly finding an existing note or creating a new one.
+- Assign each note to one category or leave it uncategorized.
+- Choose a template type when creating a note: **Markdown** (default) or **Todo List** with ordered items, completion toggling, and reordering.
+
+### Categories
+
+- Create, rename, move, reorder, and safely delete hierarchical categories.
+- Assign an optional system emoji icon to every category or subcategory.
+- Create nested subcategories at any depth and navigate them from the sidebar.
+- Filter notes by a directly assigned category or by `Uncategorized`; search remains scoped to the active filter.
+- Shareable category filters through the `?category=<categoryId>` URL parameter.
+- Category selection in the note editor with offline autosave.
+- Deletion guards prevent orphaning active subcategories or assigned notes.
+
+### Wiki links and backlinks
+
+- Connect notes by writing `[[Note title]]` in Markdown; `[[Note title|Label]]` is also recognized by the link parser.
+- Fuzzy local note suggestions appear after typing `[[` and support keyboard navigation with the arrow keys, `Enter`, and `Escape`.
+- Every note page shows clickable outgoing links and backlinks below the editor.
+- Links are rebuilt automatically whenever note content changes and are removed when either side is deleted.
+- Links to notes that do not exist yet remain local and unresolved, then resolve automatically after the target note is created.
+- Renaming a note records its previous title as a local alias, so existing links and searches continue to resolve without rewriting note content.
+
+### Local-first storage and offline support
+
+- Notes, categories, resolved links, unresolved link names, and local note aliases are persisted in IndexedDB through Dexie.
+- Note changes and outbox operations are written transactionally.
+- The application remains usable without an API connection.
+- Installable PWA with a service worker and offline-ready/update notifications.
+- Background synchronization after local changes, every 30 seconds while the app is open, when the tab becomes visible, and when the browser comes back online.
+
+### Synchronization
+
+- Configurable fake or HTTP synchronization transport.
+- Local outbox for note, category, and link create/update/delete operations.
+- Coalescing of pending operations to avoid unnecessary sync traffic.
+- Push/pull synchronization with a server-side sequence cursor.
+- Optimistic version checks and conflict detection.
+- Retry metadata and exponential backoff for retryable failures.
+- Automatic background sync with a manual fallback action and visible `Saved locally`, `Syncing`, `Synced`, `Offline`, `Sync error`, and `Conflict` states.
+
+### Conflict management
+
+- Conflicts are first-class domain entities kept in a dedicated `conflicts` IndexedDB table with `open`, `resolved`, and `dismissed` statuses.
+- The SyncEngine detects conflicts returned by the backend, persists local and remote snapshots, and marks the affected note, category, or link with a `conflict` `syncStatus`. It never overwrites local data or discards local changes when a conflict is detected.
+- Conflict types are classified automatically: `content`, `rename`, `delete_vs_edit`, `category_move`, and `generic`.
+- A global conflict indicator in the sidebar reports `No conflicts` or `<n> conflicts` and links to `/conflicts`. A conflict counter is shown next to the existing sync status.
+- The `/conflicts` route lists open conflicts first and resolved/dismissed conflicts below. Each card shows the entity type, the conflicts title or name, the conflict type, and the creation date.
+- The `/conflicts/$conflictId` detail page displays the conflict type, local and remote versions, creation timestamp, the local and remote changes, and the available actions:
+  - `Keep Mine` keeps the local snapshot and re-queues a pending update operation with the remote version as the base version.
+  - `Keep Remote` overwrites the matching local entity with the remote snapshot and clears the pending outbox operations for that entity.
+  - `Merge Manually` opens a simple two-column merge editor for note content conflicts, saves the edited result locally, and queues a pending update operation.
+  - `Restore Note` preserves the local content for a `delete_vs_edit` conflict and re-queues a pending update operation.
+  - `Delete Mine` accepts the remote deletion, marks the local entity as deleted, and clears pending outbox operations.
+- For note rename conflicts, an optional `Custom Title` action lets the user write a new title and resolve through the merge path.
+- For category move conflicts, the cycle validation rules remain enforced when applying a remote move.
+- Conflicts can be dismissed from the conflict card, the note banner, or the detail page. Dismissed conflicts keep the entity unchanged, disappear from the active conflict count, and remain queryable through the resolved list.
+- When opening a note with an open conflict, a non-blocking banner offers `Review conflict` and `Dismiss`. Editing remains available while the banner is visible.
+- When a conflict is detected, a small non-blocking toast notification appears with `Review` and dismisses automatically. No modal dialogs are used.
+- Conflicts persist enough information to be reconstructed after a browser reload, an application restart, or temporary offline periods.
+- A conflict service provides the foundation for future automatic merge and three-way merge support by capturing the base version, local snapshot, and remote snapshot needed by a future merge algorithm.
+
+### Authentication and authorization
+
+- User registration and login with email/password using Argon2 hashing.
+- JWT access tokens (15-minute expiry) and opaque refresh tokens (30-day expiry, stored as SHA-256 hashes in the database with rotation on every refresh).
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, and `POST /auth/logout` endpoints, all validated with Zod schemas via shared ts-rest contracts.
+- Every newly registered user automatically receives a **Personal Workspace** named `<email> Personal Workspace` (created transactionally with the user account) where they are the `OWNER`.
+- A NestJS `JwtAuthGuard` (Passport JWT strategy) and a `WorkspaceGuard` protect all sync push, sync pull, search, and note endpoints.
+- The `WorkspaceGuard` requires the `X-Workspace-Id` header on every workspace-scoped request. Missing header returns `400 Bad Request`. Invalid workspace access returns `403 Forbidden`.
+- The guard extracts the authenticated user from the JWT, validates workspace membership, and injects `workspaceId` onto the request so that every query is scoped to that workspace.
+- Unauthenticated requests to protected endpoints are rejected with `401 Unauthorized`. Missing `X-Workspace-Id` returns `400 Bad Request`.
+- Rate limiting is applied to `/auth/login` (10 req/min), `/auth/register` (5 req/min), and `/auth/refresh` (10 req/min).
+
+#### Offline authentication model
+
+BigMind uses a four-state authentication model to support offline-first usage:
+
+| State | Meaning | Sync | UI Behavior |
+|-------|---------|------|-------------|
+| `authenticated` | Valid tokens, online | Active | Normal |
+| `offline_authenticated` | Valid stored tokens but offline | Paused (offline) | Normal, shows "Offline" sync status |
+| `auth_required` | Tokens expired or revoked, possible to be offline | Paused | Shows banner: "Authentication required", local data fully accessible |
+| `unauthenticated` | No tokens stored | Inactive | Redirect to login |
+
+- Network failures during token refresh preserve all tokens and local data (transition to `offline_authenticated`).
+- Authentication failures (expired/revoked refresh token) transition to `auth_required` and preserve local data and outbox.
+- Token refresh distinguishes network errors (fetch throws) from authentication errors (HTTP 4xx response).
+- Automatic local database clearing is never triggered by authentication failures — only by explicit user logout.
+- Logout clears tokens, local database, outbox, and workspace cache.
+
+### Workspaces
+
+Workspaces are the primary ownership model for BigMind. Data is scoped to a workspace, never directly to a user.
+
+**Tables:**
+
+| Table | Columns | Purpose |
+|-------|---------|---------|
+| `workspaces` | `id`, `name`, `description`, `created_at`, `updated_at` | A shared space for notes and categories |
+| `workspace_members` | `workspace_id`, `user_id`, `role`, `created_at` | Maps users to workspaces with a role |
+
+**Roles:** `OWNER`, `EDITOR`, `VIEWER` (stored as a PostgreSQL enum `workspace_role`).
+
+**Backend module** (`apps/api/src/workspaces/`):
+
+- `workspaces.module.ts` — NestJS module providing and exporting `WorkspaceRepository` and `WorkspaceService`.
+- `workspaces.service.ts` — Business logic layer wrapping the repository, accepts a `DatabaseTransaction` for transactional membership creation.
+- `workspaces.repository.ts` — Drizzle ORM access layer with six methods:
+  - `createWorkspace(values, tx?)` — creates a workspace row.
+  - `addMember(values, tx?)` — adds a user to a workspace with a role.
+  - `removeMember(workspaceId, userId, tx?)` — removes a membership (throws `404` if not found).
+  - `listUserWorkspaces(userId, tx?)` — returns all workspaces the user belongs to, with their role.
+  - `findWorkspaceById(id, tx?)` — fetches a single workspace by ID.
+  - `getUserRole(workspaceId, userId, tx?)` — returns the user's role in a workspace (or `undefined`).
+- `workspaces.controller.ts` — Exposes `GET /workspaces` (JWT-protected) and invitation endpoints.
+- `invitations.repository.ts` — Drizzle ORM access for `workspace_invitations`.
+- `invitations.service.ts` — Invitation business logic: create (OWNER only), list, revoke, get by token, accept. Validates email match on accept. Transactional membership creation on accept.
+
+**Workspace invitations:**
+
+| Table | Columns | Purpose |
+|-------|---------|---------|
+| `workspace_invitations` | `id`, `workspace_id`, `email`, `role`, `token`, `expires_at`, `accepted_at`, `created_at` | Tracks pending and accepted invitations |
+
+Invitation endpoints (all JWT-protected except `getInvitation`):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/workspaces/:workspaceId/invitations` | Create an invitation (OWNER only). Body: `{ email, role }` where role is `EDITOR` or `VIEWER`. Returns the invitation with a unique token. |
+| `GET` | `/workspaces/:workspaceId/invitations` | List all invitations for a workspace (OWNER only). |
+| `DELETE` | `/workspaces/:workspaceId/invitations/:invitationId` | Revoke an invitation (OWNER only). |
+| `GET` | `/workspace-invitations/:token` | Get invitation details by token (anyone, used for invitation preview). |
+| `POST` | `/workspace-invitations/accept` | Accept an invitation. Body: `{ token }`. The authenticated user's email must match the invitation email. Transactionally creates a membership and marks the invitation as accepted. |
+
+**Member management endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/workspaces/:workspaceId/members` | List all members (any member can view). Returns `userId`, `email`, `role`, `joinedAt`. |
+| `PATCH` | `/workspaces/:workspaceId/members/:userId` | Change a member's role (OWNER only). Body: `{ role }`. Prevents demoting the last OWNER. |
+| `DELETE` | `/workspaces/:workspaceId/members/:userId` | Remove a member (OWNER only). Prevents removing the last OWNER. |
+| `PATCH` | `/workspaces/:workspaceId/rename` | Rename a workspace (OWNER only). Body: `{ name }`. |
+| `DELETE` | `/workspaces/:workspaceId` | Delete a workspace (OWNER only, personal WS cannot be deleted, must have no other members). |
+
+**Role permissions:**
+
+| Action | OWNER | EDITOR | VIEWER |
+|--------|-------|--------|--------|
+| View notes | ✅ | ✅ | ✅ |
+| Create/edit notes | ✅ | ✅ | ❌ |
+| View workspace members | ✅ | ✅ | ✅ |
+| Invite users | ✅ | ❌ | ❌ |
+| Change member role | ✅ | ❌ | ❌ |
+| Remove member | ✅ | ❌ | ❌ |
+| Rename workspace | ✅ | ❌ | ❌ |
+| Delete workspace | ✅ | ❌ | ❌ |
+| Revoke invitation | ✅ | ❌ | ❌ |
+
+Owners cannot remove or demote themselves if they are the last OWNER of the workspace.
+
+Invitations expire after 7 days. Accepting requires the authenticated user's email to match the invitation email.
+
+**Data isolation:** notes, categories, note links, sync operation records, and the change log all carry a `workspace_id` foreign key. Every repository query filters by `workspace_id`, ensuring strict isolation between workspaces.
+
+**Personal Workspace:** created transactionally during user registration within the same Drizzle transaction that creates the user account and the `OWNER` membership. Named `<email> Personal Workspace`.
+
+**Workspace selection:** the frontend sends an `X-Workspace-Id` header on every sync and search request. The `WorkspaceGuard` validates the user's membership and enforces the role. If the header is absent, the guard falls back to the user's first workspace.
+
+**Frontend workspace switcher** (`apps/web/src/features/workspaces/`):
+
+- `workspace-store.ts` — Persists the selected workspace ID in `localStorage`.
+- `workspace-client.ts` — Fetches the user's workspaces from `GET /workspaces`.
+- `workspace-context.tsx` — React context: provides `workspaces`, `currentWorkspace`, `switchWorkspace`. On switch, clears all IndexedDB data and resets the sync cursor so the engine pulls the new workspace's data from scratch.
+- `workspace-switcher.tsx` — Dropdown component at the top of the sidebar. Shows the current workspace name, lists all available workspaces with role badges, and persists selection.
+- The `HttpSyncTransport` attaches the `X-Workspace-Id` header to every push/pull request alongside the JWT `Authorization` header.
+
+### Frontend authentication
+
+- Login and register pages at `/login` and `/register` with email/password forms, inline validation, and error display.
+- Access and refresh tokens are persisted in `localStorage` via a singleton `AuthStore`.
+- The `AuthProvider` subscribes to `AuthStore` state changes and exposes `authState` (`authenticated` | `offline_authenticated` | `auth_required` | `unauthenticated`) and `isAuthenticated` (true for `authenticated` and `offline_authenticated`) through React context.
+- `unauthenticated` users are redirected to `/login`; `auth_required` users see an amber banner but can continue working offline.
+- `auth_required` state cannot clear the local database or outbox — local modifications are always preserved.
+- A logout button in the sidebar footer clears all local data and tokens.
+- The `HttpSyncTransport` attaches a `Bearer` JWT to every sync request and, on `401`, transparently refreshes the access token and retries the call once.
+- The sync engine checks `authState` before syncing and sets status to `auth_required` if authentication cannot continue.
+- IndexedDB is cleared only on explicit user logout, not on login or register. This preserves offline modifications across sessions.
+- `VITE_API_URL` is used for all auth API calls and HTTP sync transport alike.
+
+### Backend API
+
+- NestJS API with shared ts-rest contracts and Zod validation.
+- PostgreSQL persistence through Drizzle ORM.
+- Batched `/sync/push` and cursor-based `/sync/pull` endpoints (JWT-protected).
+- Server-side full-text search via PostgreSQL `tsvector` (JWT-protected).
+- Server-side note, category, and link versions, ordered change log, and conflict responses.
+- Health endpoint at `/health`.
+- OpenAPI/Swagger documentation at `/docs` in development.
+- Integration tests against a dedicated PostgreSQL test database, with authenticated test helpers.
+
+### Shared domain
+
+The `@bigmind/domain` library contains platform-independent note, category, link, alias, conflict, and sync types and pure rules, including title/name normalization, Markdown previews, wiki-link extraction and resolution, hierarchy construction, sibling ordering, descendant and cycle checks, deletion checks, entity IDs, timestamps, versions, conflict classification helpers (`isConflictResolved`, `isConflictOpen`, `isConflictDismissed`, `isActiveConflict`), and shared sync primitives. It has no dependency on React, NestJS, browser APIs, or persistence libraries.
+
+## How to use BigMind
+
+### Create and edit notes
+
+1. Select the `+` button next to the BigMind logo to create a note.
+2. Enter a title and write the note body in the Markdown editor.
+3. Optionally select a category from the `Category` menu above the editor.
+
+Changes are saved automatically to IndexedDB after a short delay. `Saved locally` means the note is safe in the browser and may still be waiting for server synchronization. The timestamp shown on the note uses the last update time, or the creation time when the note has never been updated.
+
+Use the sidebar search field to filter the visible notes. Press `Ctrl+K` on Windows/Linux or `Cmd+K` on macOS to open the command palette, search across notes, or create a new note quickly. Search also recognizes previous note titles stored as local aliases.
+
+### Organize notes with categories
+
+1. Select `New category` in the sidebar.
+2. Enter the category name and, optionally, choose one system emoji as its icon.
+3. Use the `+` action on an existing category to create a subcategory.
+4. Use `Rename`, `Move`, and `Delete` to maintain the hierarchy.
+
+Selecting a category filters the note list. `All Notes` removes the filter, while `Uncategorized` shows notes without a category. A category cannot be deleted while it contains active subcategories or assigned notes; move or remove those items first.
+
+### Create wiki links
+
+Type two opening brackets in the note editor and continue with a note title:
+
+```text
+[[Rust]]
 ```
 
-## Run tasks
+After typing `[[`, BigMind displays fuzzy suggestions from the notes already stored on the device. Continue typing to narrow the list, use `Arrow Up` and `Arrow Down` to move through it, press `Enter` to insert the selected note, or press `Escape` to close the popup.
 
-To build the library use:
+The parser also understands an optional display label:
 
-```sh
-npx nx run pkg1:build
+```text
+[[Rust|Read the Rust note]]
 ```
 
-To run any task with Nx use:
+BigMind resolves the canonical title (`Rust`) while preserving the complete Markdown text. Links are directed: if `Ownership` contains `[[Rust]]`, `Rust` appears under `Outgoing Links` on the Ownership page and Ownership appears under `Backlinks` on the Rust page. Select either entry to navigate directly to the related note.
 
-```sh
-npx nx run <project-name>:<target>
+### Work with missing or renamed notes
+
+Writing `[[Lifetime]]` does not create a note automatically. The reference remains unresolved locally. If a note titled `Lifetime` is created later, BigMind resolves the link and updates outgoing links and backlinks automatically.
+
+Renaming a note does not rewrite existing Markdown. For example, after renaming `Rust` to `Rust Programming`, existing `[[Rust]]` references continue to work through a local alias and display the current title in link lists. Aliases are currently local to the device and are not synchronized separately.
+
+### Switch workspaces
+
+If you belong to more than one workspace, a workspace switcher dropdown appears at the top of the sidebar.
+
+1. Click the current workspace name to open the dropdown.
+2. Select a different workspace from the list. Each entry shows the workspace name and your role (`OWNER`, `EDITOR`, or `VIEWER`).
+3. BigMind clears all local data, resets the sync cursor, and pulls the selected workspace's notes, categories, and links from the server.
+4. The sidebar updates to show the new workspace's note tree and categories.
+
+Your selection is persisted in `localStorage`, so the same workspace is active on your next visit.
+
+### Manage workspace members
+
+Navigate to `/settings` to manage your workspace.
+
+**About tab:**
+- Shows workspace name, description, and your role.
+- OWNERs can rename the workspace inline. The workspace ID and all data (notes, categories, links) remain unchanged.
+- OWNERs can delete the workspace. A confirmation dialog requires typing `DELETE`. Personal workspaces and workspaces with other members cannot be deleted.
+
+### Move and copy notes across workspaces
+
+Notes can be moved or copied to another workspace from the note detail page:
+
+- **Move**: Removes the note from the source workspace and moves it to the destination. Wiki links are preserved in the content but resolved links (backlinks) in the source workspace are removed.
+- **Copy**: Creates a duplicate of the note in the destination workspace. The original note remains unchanged. Categories are not carried over (set to `null`).
+- Both operations require the user to be at least `EDITOR` in both source and destination workspaces.
+- VIEWERs cannot move or copy notes.
+
+**Members tab:**
+- Lists all members with their email, role, and join date.
+- Only OWNERS can change a member's role (Owner → Editor → Viewer) or remove a member.
+- A confirmation dialog appears when removing a member or demoting an Owner.
+- The last Owner of a workspace cannot be removed or demoted.
+- Non-owners see the member list but cannot modify it.
+
+**Invitations tab:**
+- Only OWNERS can invite new users by email.
+- Pending and accepted invitations are displayed separately.
+- Pending invitations can be revoked by the Owner.
+
+### Understand synchronization and offline mode
+
+All edits are written locally first, so notes, categories, wiki links, and backlinks remain available without a network connection. With the HTTP transport enabled, BigMind attempts background synchronization:
+
+A local full-text search index (powered by **MiniSearch**) is built and maintained entirely from the local Dexie data:
+
+- Note **title** and **content** are indexed; deleted notes are excluded.
+- The index is automatically rebuilt from the persisted notes on application startup.
+- Changes are kept in sync through Dexie hooks: created, updated, restored, or deleted notes are re-indexed immediately.
+- Search is **case-insensitive**, supports **partial words** (prefix matching), and returns results **ranked by relevance score** (title matches are boosted above content matches).
+- Each result includes the note ID, title, score, and a preview snippet centered around the first matching term.
+- The index is entirely local, works offline, and requires no server-side component.
+
+All edits are written locally first, so notes, categories, wiki links, and backlinks remain available without a network connection. With the HTTP transport enabled, BigMind attempts background synchronization:
+
+- after a local change;
+- every 30 seconds while the application is open;
+- when the browser returns online;
+- when the tab becomes visible again.
+
+The sidebar reports `Saved locally`, `Syncing`, `Synced`, `Offline`, `Login required`, `Sync error`, or `Conflict`. Use `Sync now` as a manual retry when required. Closing or reloading the page does not discard pending operations because they remain in the local outbox.
+
+**Synchronized entity types:** `note`, `category`, `link`, `todo_item`. Todo items are synchronized independently (not as part of a parent note payload), allowing per-item conflict detection and granular offline editing.
+
+**Authentication-aware sync:**
+
+The sync engine detects authentication failures separately from transport failures:
+
+| Failure Type | Examples | Engine Behavior |
+|-------------|----------|-----------------|
+| Transport | off-line, timeout, DNS failure, 500 | Exponential backoff retry, status: `error` / `offline` |
+| Authentication | expired refresh token, revoked token, logged out | Stop sync immediately, status: `auth_required` ("Login required"), preserve outbox, no retry |
+
+- On authentication failure, pending outbox operations are marked as failed (non-retryable) and preserved locally.
+- After the user re-authenticates (logs in again), the sync engine automatically resumes and processes pending outbox operations.
+- The `offline` and `auth_required` statuses are independent — a user can be authenticated but offline (syncs when connectivity returns) or need re-authentication while online (syncs after login).
+
+Deleting a note removes its outgoing links and backlinks locally and queues the corresponding soft-delete operations for synchronization.
+
+## Technology stack
+
+- **Workspace:** Nx, pnpm, TypeScript
+- **Web:** React, Vite, TanStack Router, Tailwind CSS, Milkdown Crepe
+- **Local persistence:** Dexie and IndexedDB
+- **PWA:** Vite PWA and Workbox
+- **API:** NestJS and ts-rest
+- **Database:** PostgreSQL and Drizzle ORM
+- **Validation:** Zod
+- **Testing:** Vitest, Jest, and Playwright tooling
+
+## Workspace structure
+
+```text
+apps/
+  web/          React local-first PWA
+  api/          NestJS synchronization API
+  web-e2e/      Playwright end-to-end project
+libs/
+  contracts/    Zod schemas and ts-rest API contracts
+  domain/       Shared note types and pure business rules
+docker/
+  postgres/     PostgreSQL development initialization
 ```
 
-These targets are either [inferred automatically](https://nx.dev/docs/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+Nx module-boundary rules keep the domain independent from applications and platform-specific infrastructure.
 
-[More about running tasks in the docs &raquo;](https://nx.dev/docs/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## Development setup
 
-## Versioning and releasing
+### Prerequisites
 
-To version and release the library use
+- Node.js 24.18.0 (the version is recorded in `.nvmrc`)
+- pnpm 11
+- Docker with Docker Compose
 
-```
-npx nx release
-```
+If you use `nvm`, select the repository version before installing dependencies:
 
-Pass `--dry-run` to see what would happen without actually releasing the library.
-
-[Learn more about Nx release &raquo;](https://nx.dev/docs/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Keep TypeScript project references up to date
-
-Nx automatically updates TypeScript [project references](https://www.typescriptlang.org/docs/handbook/project-references.html) in `tsconfig.json` files to ensure they remain accurate based on your project dependencies (`import` or `require` statements). This sync is automatically done when running tasks such as `build` or `typecheck`, which require updated references to function correctly.
-
-To manually trigger the process to sync the project graph dependencies information to the TypeScript project references, run the following command:
-
-```sh
-npx nx sync
+```bash
+nvm use
 ```
 
-You can enforce that the TypeScript project references are always in the correct state when running in CI by adding a step to your CI job configuration that runs the following command:
+### 1. Install dependencies
 
-```sh
-npx nx sync:check
+```bash
+pnpm install
 ```
 
-[Learn more about nx sync](https://nx.dev/reference/nx-commands#sync)
+### 2. Create the local environment file
 
-## Nx Cloud
-
-Nx Cloud ensures a [fast and scalable CI](https://nx.dev/nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
-
-- [Remote caching](https://nx.dev/docs/features/ci-features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/docs/features/ci-features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/docs/features/ci-features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/docs/features/ci-features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-### Set up CI (non-Github Actions CI)
-
-**Note:** This is only required if your CI provider is not GitHub Actions.
-
-Use the following command to configure a CI workflow for your workspace:
-
-```sh
-npx nx g ci-workflow
+```bash
+cp .env.example .env
 ```
 
-[Learn more about Nx on CI](https://nx.dev/docs/features/ci-features?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+**Important:** Set `JWT_SECRET` to a secure random string in `.env`. The application will fail to start if `JWT_SECRET` is not set.
 
-## Install Nx Console
+For full-stack development, set the web transport to `http` in `.env` and point the web app at the API:
 
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
+```dotenv
+VITE_SYNC_TRANSPORT=http
+VITE_API_URL=http://localhost:3000
+```
 
-[Install Nx Console &raquo;](https://nx.dev/docs/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+The remaining default values are ready for the Docker PostgreSQL service:
 
-## 🔗 Learn More
+```dotenv
+DATABASE_URL=postgresql://bigmind:bigmind@localhost:5432/bigmind
+TEST_DATABASE_URL=postgresql://bigmind:bigmind@localhost:5432/bigmind_test
+PORT=3000
+CORS_ORIGINS=http://localhost:4200
+```
 
-- [Nx Documentation](https://nx.dev/docs)
-- [Crafting Your Workspace Tutorial](https://nx.dev/docs/getting-started/tutorials/crafting-your-workspace)
-- [Module Boundaries](https://nx.dev/docs/features/enforce-module-boundaries)
-- [Releasing Packages](https://nx.dev/docs/features/manage-releases)
-- [Nx Plugins](https://nx.dev/docs/concepts/nx-plugins)
-- [Nx Cloud](https://nx.dev/nx-cloud)
+### 3. Start PostgreSQL
 
-## 💬 Community
+```bash
+pnpm db:start
+```
 
-Join the Nx community:
+Docker starts PostgreSQL on port `5432` and creates both the development and test databases. Data is retained in the `bigmind-postgres` Docker volume.
 
-- [Discord](https://go.nx.dev/community)
-- [X (Twitter)](https://twitter.com/nxdevtools)
-- [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [YouTube](https://www.youtube.com/@nxdevtools)
-- [Blog](https://nx.dev/blog)
+### 4. Apply database migrations
+
+```bash
+pnpm db:migrate
+```
+
+### 5. Start the web application and API
+
+```bash
+pnpm dev
+```
+
+The development services are available at:
+
+- Web application: <http://localhost:4200>
+- API: <http://localhost:3000>
+- API health check: <http://localhost:3000/health>
+- Swagger documentation: <http://localhost:3000/docs>
+
+You will be automatically redirected to `/login` on first visit. Create an account at `/register` or log in with an existing account. Every registered user gets a Personal Workspace named `<your email> Personal Workspace` automatically.
+
+Stop the Nx development processes with `Ctrl+C`. Stop PostgreSQL separately with:
+
+```bash
+pnpm db:stop
+```
+
+## Frontend-only development
+
+The fake sync transport runs entirely in the browser and does not require PostgreSQL or the API. Keep the following value in `.env`:
+
+```dotenv
+VITE_SYNC_TRANSPORT=fake
+```
+
+Then start only the web project:
+
+```bash
+pnpm exec nx serve @bigmind/web
+```
+
+## Design System
+
+The BigMind UI follows the **Mindful Utility** design system (blue variant), defined in `apps/web/src/styles.css` via Tailwind v4 `@theme` tokens.
+
+### Principles
+
+- **Modern Corporate Minimalism** — expansive white space, structured hierarchy, minimal distraction.
+- **Content is the hero** — the canvas is a light neutral (`#f7f9fb`), content surfaces are white.
+- **Blue as a single accent** — used exclusively for primary actions, active states, and navigation highlights.
+
+### Colors
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `blue-600` | `#2563eb` | Primary actions, active nav |
+| `blue-700` | `#004ac6` | Primary hover |
+| `slate-50` | `#f7f9fb` | App canvas / sidebar |
+| `slate-700` | `#191c1e` | Primary text (on-surface) |
+| `slate-400` | `#737686` | Muted text / icons |
+
+### Typography
+
+**Inter** is the sole typeface, loaded via Google Fonts. Hierarchy uses weight control:
+- Displays/headlines: `700`–`800`
+- Body: `400` with generous line height
+- Labels/metadata: `600` with letter-spacing (uppercase section headers in the sidebar)
+
+### Shape & Spacing
+
+- Corner radius: `4px` standard elements, up to `8px` for cards/modals.
+- 8px linear spacing scale.
+- Sidebar fixed at `280px`; mobile collapses to a drawer.
+
+### Elevation
+
+Depth is created with tonal layers and 1px low-contrast outlines (`slate-200`) rather than shadows. Hover states use a subtle grey fill. Modals use a soft diffused shadow.
+
+## PWA / Mobile
+
+- **Offline first**: All data stored in IndexedDB. Works without internet.
+- **Service worker**: Static assets precached via Workbox. Fast reloads.
+- **Update flow**: Toast notification when a new version is available. User chooses to update.
+- **Safe areas**: Android notch/status bar support via `env(safe-area-inset-*)` CSS.
+- **Rich install prompt**: Manifest includes `screenshots`, `categories`, and multi-density icons.
+
+To generate missing PWA icons from a source image:
+
+```bash
+node -e "
+const s = [48,72,96,144,168,192,512];
+const sharp = require('sharp');
+for (const size of s) sharp('apps/web/public/source-icon.png').resize(size,size).toFile('apps/web/public/pwa-'+size+'x'+size+'.png');
+"
+```
+
+Screenshots for the install dialog go in `apps/web/public/screenshots/` (1080x1920 PNG).
+
+## Reminders & Agenda
+
+Reminders are a first-class domain feature for tracking tasks with due dates. They work completely offline and synchronize through the existing sync engine.
+
+### Reminder model
+
+| Field | Description |
+|-------|-------------|
+| `id` | UUID |
+| `workspaceId` | Workspace scope |
+| `title` | Required, max 200 characters |
+| `description` | Optional Markdown text |
+| `dueAt` | ISO datetime |
+| `completed` | Boolean toggle |
+| `createdBy` | User ID |
+| `linkedNoteId` | Optional linked note |
+| `version` | Optimistic concurrency version |
+
+### Agenda view (`/agenda`)
+
+The Agenda page groups reminders into four sections:
+
+- **Today** — due today (and overdue items sorted into upcoming)
+- **Tomorrow** — due tomorrow
+- **Upcoming** — due later
+- **Completed** — finished reminders
+
+Each section is sorted by `dueAt` ascending. From the agenda you can:
+- **Complete** a reminder (toggle)
+- **Edit** title and due date inline
+- **Delete** a reminder
+- **Open** the linked note if present
+
+Navigation: the **Agenda** link appears in the sidebar footer.
+
+### Offline & sync
+
+Reminders follow the same offline-first pattern as notes:
+
+- Created, edited, completed, and deleted locally first (IndexedDB).
+- Changes are queued in the outbox and synchronized when connectivity returns.
+- Conflicts use the existing optimistic concurrency (version) model.
+- All operations are workspace-scoped with the existing role permissions.
+
+### API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/reminders` | List reminders (workspace-scoped) |
+| `POST` | `/reminders` | Create a reminder |
+| `PATCH` | `/reminders/:id` | Update a reminder |
+| `DELETE` | `/reminders/:id` | Delete a reminder |
+
+## Notifications
+
+BigMind has a notification infrastructure ready for future push delivery. Notifications work fully offline and sync through the existing engine.
+
+### Notification model
+
+| Field | Description |
+|-------|-------------|
+| `id` | UUID |
+| `workspaceId` | Workspace scope |
+| `type` | `reminder_due`, `note_modified`, `workspace_invitation` |
+| `title` | Required, max 200 characters |
+| `body` | Optional text |
+| `read` | Read/unread flag |
+| `createdAt` | ISO timestamp |
+
+### Notification Center
+
+A bell icon in the sidebar footer shows a badge with the unread count. Opening it lists notifications with:
+
+- Type-specific icons (⏰ reminder, 📝 note, 📨 invitation)
+- **Mark all read** action
+- Individual mark-as-read and delete actions
+
+### Offline & sync
+
+- Notifications are created and stored locally first (IndexedDB).
+- Read-state changes and deletions queue in the outbox and sync when online.
+- No Web Push is implemented yet — the domain model is future-proof for adding it without schema changes.
+
+### API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/notifications` | List notifications (workspace-scoped) |
+| `POST` | `/notifications` | Create a notification |
+| `POST` | `/notifications/read-all` | Mark all as read |
+| `POST` | `/notifications/:id/read` | Mark one as read |
+| `DELETE` | `/notifications/:id` | Delete a notification |
+
+## Performance
+
+BigMind uses lazy loading and route-level code splitting to minimize initial load time:
+
+| Component | Strategy | Initial Load Impact |
+|-----------|----------|---------------------|
+| **MarkdownEditor** (Milkdown Crepe) | `React.lazy` + `Suspense` | ~1.1 MB deferred until a Markdown note is opened |
+| **TodoEditor** | `React.lazy` + `Suspense` | Deferred until a Todo List note is opened |
+| **Routes** (`/notes`, `/settings`, `/conflicts`, `/categories`) | TanStack Router `autoCodeSplitting` | Each route is a separate chunk |
+
+**Bundle breakdown** (production build):
+| Asset | Size (gzipped) | Content |
+|-------|---------------|---------|
+| `index-*.js` | 132 KB | App shell: auth, sidebar, routing, home page |
+| `markdown-editor-*.js` | 357 KB | Milkdown Crepe editor (lazy loaded) |
+| Other chunks | ~150 KB | Shared code, database, sync engine, todo editor |
+
+- **Initial JS**: ~132 KB gzipped (vs ~639 KB before optimizations — 79% reduction)
+- **Subsequent loads**: All assets served from Workbox cache (instant)
+- **Future opportunities**: Replace Milkdown with a lighter editor (~200 KB), further route splitting for settings/conflicts.
+
+## Documentation
+
+For detailed guides and reference documentation, see:
+
+- [Permissions & Role Matrix](docs/permissions.md): Access control rules, role definitions (OWNER, EDITOR, VIEWER), and last-owner protection rules.
+- [Workspace Management Guide](docs/workspace-management.md): Guide for workspace settings, member management, role assignments, and removals.
+- [Architecture Overview](docs/architecture.md): Technical architecture of BigMind.
+- [Database Schema](docs/database-schema.md): Database schema and Drizzle ORM layout.
+- [Template System](docs/template-system.md): Note template types, how they work, and how to add new templates.
+
+### Template System
+
+Notes support two template types:
+- **MARKDOWN** — Full Markdown editing with Milkdown Crepe (default for all notes).
+- **TODO_LIST** — Task list with ordered items, completion toggling, drag-and-drop reordering, a "Show Completed" toggle (persisted in localStorage), and keyboard shortcuts (Enter to create below, Backspace on empty to delete). Counters (Remaining/Completed) always reflect the full list.
+- Todo items are synchronized as independent entities through the outbox-based sync engine, with offline creation, editing, deletion, and conflict detection at the individual item level.
+
+When creating a note, a template selector popup appears next to the + button. The `templateType` field is:
+- Stored in the `template_type` PostgreSQL column and the IndexedDB `NoteRecord`.
+- Included in all sync payloads as `templateType` with a default of `MARKDOWN` for backward compatibility.
+- Validated through the `TEMPLATE_TYPES` constant array in `@bigmind/domain/notes`.
+- Automatically set to `MARKDOWN` for all existing notes via the Dexie v7 migration and the PostgreSQL default column value.
+
+### Todo List API
+
+Notes with `templateType: TODO_LIST` expose the following endpoints for managing todo items:
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/notes/:noteId/todos` | List all todo items (ordered by position) | Any member |
+| `POST` | `/notes/:noteId/todos` | Create a new todo item | EDITOR+ |
+| `PATCH` | `/notes/:noteId/todos/:itemId` | Update item text | EDITOR+ |
+| `PUT` | `/notes/:noteId/todos/:itemId/toggle` | Toggle completion | EDITOR+ |
+| `DELETE` | `/notes/:noteId/todos/:itemId` | Delete an item | EDITOR+ |
+| `PUT` | `/notes/:noteId/todos/:itemId/reorder` | Reorder item (`body: { position }`) | EDITOR+ |
+
+**Domain model:**
+- `TodoList` — belongs to a Note (one per TODO_LIST note), created automatically on first item.
+- `TodoItem` — belongs to a TodoList, has `text`, `completed` (boolean), `position` (integer).
+- Items are always returned ordered by position.
+- Only notes with `templateType: TODO_LIST` accept todo operations (400 otherwise).
+- VIEWERs can list items but cannot create, update, toggle, delete, or reorder.
+
+**Keyboard shortcuts:**
+- `Enter` while editing an item: saves and moves focus to the next item (or the "Add" input if at the end).
+- `Backspace` on an empty editing input: deletes the item and focuses the previous item.
+- `Escape`: cancels editing.
+- `Space` or `Enter` on item text: starts editing.
+
+**Drag and drop:** Grab the `⋮⋮` handle or any part of the item to reorder. Changes are persisted locally and synchronized through the outbox.
+
+## Useful commands
+
+```bash
+# Run unit tests across the workspace
+pnpm test
+
+# Run API integration tests (PostgreSQL must be running)
+pnpm test:integration
+
+# Run lint checks
+pnpm lint
+
+# Run TypeScript checks
+pnpm exec nx run-many -t typecheck
+
+# Build all current applications and libraries
+pnpm exec nx run-many -t build
+
+# Build only projects affected by the current changes
+pnpm build:affected
+
+# Inspect the Nx project graph
+pnpm exec nx graph
+```
+
+## Current scope
+
+BigMind currently focuses on notes, hierarchical categories, wiki links/backlinks, full-text search, local-first synchronization, a user-facing conflict resolution workflow, JWT authentication with workspace-based data isolation, workspace member management (roles, members list, demotion/removal guards), and automatic token refresh. Sharing, end-to-end encryption, drag-and-drop category ordering, descendant-inclusive filters, graph visualization, alias synchronization between devices, fully automatic merge, three-way merge, and multi-workspace switching are not implemented yet.

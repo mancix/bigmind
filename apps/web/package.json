@@ -1,0 +1,19 @@
+{
+  "name": "@bigmind/web",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "tags": [
+      "type:app",
+      "platform:web"
+    ]
+  },
+  "dependencies": {
+    "@bigmind/contracts": "workspace:*",
+    "@bigmind/domain": "workspace:*",
+    "@ts-rest/core": "^3.52.1"
+  },
+  "devDependencies": {
+    "@testing-library/user-event": "^14.6.1"
+  }
+}

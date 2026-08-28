@@ -7,6 +7,7 @@ out-tsc
 
 # dependencies
 node_modules
+/.pnpm-store
 
 # IDEs and editors
 /.idea
@@ -48,3 +49,26 @@ Thumbs.db
 .nx/polygraph
 .nx/self-healing
 .nx/migrate-runs
+vite.config.*.timestamp*
+vitest.config.*.timestamp*
+test-output
+.env
+
+.env.local
+.env.*
+.env.*.local
+.envrc
+.npmrc
+.yarnrc
+.yarnrc.yml
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+
+# Local AI tool config with credentials
+opencode.json
+
+# TypeScript build artifacts
+*.tsbuildinfo

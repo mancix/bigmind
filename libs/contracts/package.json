@@ -1,0 +1,29 @@
+{
+  "name": "@bigmind/contracts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "@bigmind/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "nx": {
+    "tags": [
+      "type:contract",
+      "platform:shared"
+    ]
+  },
+  "dependencies": {
+    "@bigmind/domain": "workspace:*",
+    "@ts-rest/core": "^3.52.1",
+    "zod": "^3.25.76"
+  },
+  "module": "./dist/index.js"
+}

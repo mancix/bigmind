@@ -1,0 +1,94 @@
+import { useState } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
+
+import { useAuth } from './auth-context';
+
+export function LoginPage() {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await auth.login(email, password);
+      await navigate({ to: '/', search: { category: undefined } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-blue-100 text-xl font-bold text-blue-600">B</div>
+          <h1 className="mt-4 text-2xl font-bold text-slate-900">Sign in to BigMind</h1>
+          <p className="mt-1 text-sm text-slate-500">Enter your email and password</p>
+        </div>
+
+        {!navigator.onLine && (
+          <div className="mb-6 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-medium">No internet connection</p>
+            <p className="mt-1 text-amber-600">Internet connection required for first sign in. If you have previously signed in on this device, your data may still be available offline.</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          )}
+
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-slate-700">Email</label>
+            <input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password</label>
+            <input
+              id="password"
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Min. 8 characters"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+
+        <p className="mt-6 text-center text-sm text-slate-500">
+          Don't have an account?{' '}
+          <Link to="/register" className="font-medium text-blue-600 hover:text-blue-700">
+            Create one
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

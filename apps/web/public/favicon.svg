@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#101828"/>
+  <rect x="94" y="102" width="324" height="308" rx="42" fill="#F8FAFC"/>
+  <path d="M142 164C142 151.85 151.85 142 164 142H250C262.15 142 272 151.85 272 164V350C272 357.18 264.25 361.67 258.03 358.09L238.57 346.89C229.09 341.44 217.44 341.51 208.03 347.07L188.71 358.49C182.49 362.17 174.62 357.69 174.62 350.46V164H142Z" fill="#2563EB"/>
+  <path d="M272 164C272 151.85 281.85 142 294 142H348C360.15 142 370 151.85 370 164V332C370 344.15 360.15 354 348 354H294C281.85 354 272 344.15 272 332V164Z" fill="#14B8A6"/>
+  <path d="M174 194H242" stroke="#DBEAFE" stroke-width="18" stroke-linecap="round"/>
+  <path d="M174 238H228" stroke="#DBEAFE" stroke-width="18" stroke-linecap="round"/>
+  <path d="M304 194H338" stroke="#CCFBF1" stroke-width="18" stroke-linecap="round"/>
+  <path d="M304 238H338" stroke="#CCFBF1" stroke-width="18" stroke-linecap="round"/>
+  <path d="M226 290L286 252L335 290" stroke="#101828" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="226" cy="290" r="24" fill="#FACC15"/>
+  <circle cx="286" cy="252" r="24" fill="#FACC15"/>
+  <circle cx="335" cy="290" r="24" fill="#FACC15"/>
+  <circle cx="226" cy="290" r="9" fill="#101828"/>
+  <circle cx="286" cy="252" r="9" fill="#101828"/>
+  <circle cx="335" cy="290" r="9" fill="#101828"/>
+</svg>
