@@ -1,6 +1,6 @@
 import MiniSearch from 'minisearch';
 
-import { db, type NoteRecord } from '../../storage/database';
+import { storage, type NoteRecord } from '../../storage';
 import type { SearchResult } from './search.types';
 
 interface SearchDocument {
@@ -9,7 +9,11 @@ interface SearchDocument {
   content: string;
 }
 
-function generatePreview(content: string, query: string, maxLength = 120): string {
+function generatePreview(
+  content: string,
+  query: string,
+  maxLength = 120,
+): string {
   if (!content) return '';
 
   const lowerContent = content.toLowerCase();
@@ -17,7 +21,9 @@ function generatePreview(content: string, query: string, maxLength = 120): strin
   const matchIndex = lowerContent.indexOf(lowerQuery);
 
   if (matchIndex === -1) {
-    return content.length > maxLength ? content.slice(0, maxLength) + '…' : content;
+    return content.length > maxLength
+      ? content.slice(0, maxLength) + '…'
+      : content;
   }
 
   const contextSize = Math.floor((maxLength - query.length) / 2);
@@ -57,7 +63,7 @@ export class NoteSearchIndex {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      const notes = await db.notes
+      const notes = await storage.notes
         .filter((note) => !note.deletedAt)
         .toArray();
 

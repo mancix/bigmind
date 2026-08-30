@@ -71,5 +71,7 @@
       "platform:shared"
     ]
   },
-  "dependencies": {}
+  "dependencies": {
+    "@bigmind/markdown": "workspace:*"
+  }
 }

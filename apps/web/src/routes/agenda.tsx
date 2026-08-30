@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 
-import { db, type ReminderRecord } from '../storage/database';
+import { storage, type ReminderRecord } from '../storage';
 import { remindersRepository } from '../features/reminders/reminders-repository';
 import { Icon } from '../components/icon';
 
@@ -23,9 +23,11 @@ function addDays(d: Date, days: number): Date {
 }
 
 function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 interface GroupedReminders {
@@ -39,14 +41,20 @@ function groupReminders(reminders: ReminderRecord[]): GroupedReminders {
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = startOfDay(addDays(now, 1));
-  const grouped: GroupedReminders = { Today: [], Tomorrow: [], Upcoming: [], Completed: [] };
+  const grouped: GroupedReminders = {
+    Today: [],
+    Tomorrow: [],
+    Upcoming: [],
+    Completed: [],
+  };
 
   for (const r of reminders) {
     if (r.completed) {
       grouped.Completed.push(r);
     } else {
       const due = new Date(r.dueAt);
-      if (due < todayStart) grouped.Upcoming.push(r); // overdue shown in upcoming
+      if (due < todayStart)
+        grouped.Upcoming.push(r); // overdue shown in upcoming
       else if (sameDay(due, todayStart)) grouped.Today.push(r);
       else if (sameDay(due, tomorrowStart)) grouped.Tomorrow.push(r);
       else grouped.Upcoming.push(r);
@@ -61,23 +69,41 @@ function groupReminders(reminders: ReminderRecord[]): GroupedReminders {
 
 function formatDue(dueAt: string): string {
   const d = new Date(dueAt);
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-    + ' · ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return (
+    d.toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }) +
+    ' · ' +
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  );
 }
 
 function formatSectionDate(d: Date): string {
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 export function AgendaPage() {
   const reminders = useLiveQuery(() => remindersRepository.list(), []) ?? [];
-  const noteTitles = useLiveQuery(async () => {
-    const notes = await db.notes.toArray();
-    return new Map<string, string>(notes.filter((n: { deletedAt?: string | null }) => !n.deletedAt).map((n) => [n.id, n.title]));
-  }, []) ?? new Map<string, string>();
+  const noteTitles =
+    useLiveQuery(async () => {
+      const notes = await storage.notes.toArray();
+      return new Map<string, string>(
+        notes
+          .filter((n: { deletedAt?: string | null }) => !n.deletedAt)
+          .map((n) => [n.id, n.title]),
+      );
+    }, []) ?? new Map<string, string>();
 
   const [title, setTitle] = useState('');
-  const [dueAt, setDueAt] = useState(() => new Date(Date.now() + 3600_000).toISOString().slice(0, 16));
+  const [dueAt, setDueAt] = useState(() =>
+    new Date(Date.now() + 3600_000).toISOString().slice(0, 16),
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -88,7 +114,10 @@ export function AgendaPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
-    await remindersRepository.create({ title, dueAt: new Date(dueAt).toISOString() });
+    await remindersRepository.create({
+      title,
+      dueAt: new Date(dueAt).toISOString(),
+    });
     setTitle('');
     setShowCreate(false);
   }
@@ -127,7 +156,9 @@ export function AgendaPage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[32px] font-bold leading-10 tracking-[-0.02em] text-on-surface">Agenda</h1>
+          <h1 className="text-[32px] font-bold leading-10 tracking-[-0.02em] text-on-surface">
+            Agenda
+          </h1>
           <p className="mt-1 text-sm leading-5 text-on-surface-variant">
             Organize your priorities and keep track of your thinking milestones.
           </p>
@@ -143,9 +174,14 @@ export function AgendaPage() {
       </div>
 
       {showCreate && (
-        <form onSubmit={handleCreate} className="mb-8 space-y-3 rounded-xl border border-outline-variant bg-surface-lowest p-4 shadow-sm">
+        <form
+          onSubmit={handleCreate}
+          className="mb-8 space-y-3 rounded-xl border border-outline-variant bg-surface-lowest p-4 shadow-sm"
+        >
           <div>
-            <label className="block text-xs font-medium text-on-surface-variant">Title</label>
+            <label className="block text-xs font-medium text-on-surface-variant">
+              Title
+            </label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -155,7 +191,9 @@ export function AgendaPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-on-surface-variant">Due date</label>
+            <label className="block text-xs font-medium text-on-surface-variant">
+              Due date
+            </label>
             <input
               type="datetime-local"
               value={dueAt}
@@ -164,14 +202,27 @@ export function AgendaPage() {
             />
           </div>
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg px-3 py-2 text-sm text-on-surface-variant transition hover:bg-surface-high">Cancel</button>
-            <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:opacity-90">Create</button>
+            <button
+              type="button"
+              onClick={() => setShowCreate(false)}
+              className="rounded-lg px-3 py-2 text-sm text-on-surface-variant transition hover:bg-surface-high"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:opacity-90"
+            >
+              Create
+            </button>
           </div>
         </form>
       )}
 
       {reminders.length === 0 && (
-        <p className="mt-16 text-center text-sm text-outline">No reminders yet.</p>
+        <p className="mt-16 text-center text-sm text-outline">
+          No reminders yet.
+        </p>
       )}
 
       <div className="space-y-10">
@@ -209,7 +260,9 @@ export function AgendaPage() {
                       <button
                         type="button"
                         onClick={() => void handleToggle(r.id)}
-                        aria-label={r.completed ? 'Mark incomplete' : 'Mark complete'}
+                        aria-label={
+                          r.completed ? 'Mark incomplete' : 'Mark complete'
+                        }
                         className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border-2 transition ${
                           r.completed
                             ? 'border-primary bg-primary text-on-primary'
@@ -217,7 +270,12 @@ export function AgendaPage() {
                         }`}
                       >
                         {r.completed && (
-                          <svg viewBox="0 0 20 20" fill="currentColor" className="size-3" aria-hidden="true">
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            className="size-3"
+                            aria-hidden="true"
+                          >
                             <path
                               fillRule="evenodd"
                               d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -241,8 +299,16 @@ export function AgendaPage() {
                               onChange={(e) => setEditDueAt(e.target.value)}
                               className="rounded border border-outline-variant bg-surface-lowest px-2 py-1 text-sm outline-none focus:border-primary"
                             />
-                            <button onClick={() => void saveEdit(r)} className="rounded bg-primary px-2 py-1 text-xs text-on-primary">Save</button>
-                            <button onClick={() => setEditingId(null)} className="rounded px-2 py-1 text-xs text-on-surface-variant">
+                            <button
+                              onClick={() => void saveEdit(r)}
+                              className="rounded bg-primary px-2 py-1 text-xs text-on-primary"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="rounded px-2 py-1 text-xs text-on-surface-variant"
+                            >
                               <Icon name="close" className="text-[14px]" />
                             </button>
                           </div>
@@ -262,16 +328,17 @@ export function AgendaPage() {
                                 <Icon name="schedule" className="text-[14px]" />
                                 {formatDue(r.dueAt)}
                               </span>
-                              {r.linkedNoteId && noteTitles.has(r.linkedNoteId) && (
-                                <Link
-                                  to="/notes/$noteId"
-                                  params={{ noteId: r.linkedNoteId }}
-                                  className="flex items-center gap-1 hover:text-primary hover:underline"
-                                >
-                                  <Icon name="link" className="text-[14px]" />
-                                  {noteTitles.get(r.linkedNoteId)}
-                                </Link>
-                              )}
+                              {r.linkedNoteId &&
+                                noteTitles.has(r.linkedNoteId) && (
+                                  <Link
+                                    to="/notes/$noteId"
+                                    params={{ noteId: r.linkedNoteId }}
+                                    className="flex items-center gap-1 hover:text-primary hover:underline"
+                                  >
+                                    <Icon name="link" className="text-[14px]" />
+                                    {noteTitles.get(r.linkedNoteId)}
+                                  </Link>
+                                )}
                             </div>
                           </div>
                         )}

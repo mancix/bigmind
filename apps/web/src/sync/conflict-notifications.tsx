@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 
-import {
-  subscribeToConflictCreations,
-} from '../features/conflicts/conflict-repository';
+import { subscribeToConflictCreations } from '../features/conflicts/conflict-repository';
 
 const NOTIFICATION_TIMEOUT_MS = 8_000;
 

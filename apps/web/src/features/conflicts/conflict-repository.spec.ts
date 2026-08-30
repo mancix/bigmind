@@ -8,33 +8,33 @@ import {
   ConflictRepositoryError,
   subscribeToConflictCreations,
 } from './conflict-repository';
-import {
-  db,
-  type CategoryRecord,
-  type NoteRecord,
-} from '../../storage/database';
+import { storage, type CategoryRecord, type NoteRecord } from '../../storage';
 import { OutboxRepository } from '../../sync/outbox-repository';
 import type { RemoteChange } from '../../sync/sync.types';
 
-const outbox = new OutboxRepository();
+const outbox = new OutboxRepository(storage);
 const conflicts = new ConflictRepository(outbox);
-const categories = new CategoryRepository(outbox);
+const categories = new CategoryRepository(storage, outbox);
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
-  await db.delete();
+  await storage.delete();
 });
 
-function createNoteRecord(id: string, overrides: Partial<NoteRecord> = {}): NoteRecord {
+function createNoteRecord(
+  id: string,
+  overrides: Partial<NoteRecord> = {},
+): NoteRecord {
   return {
     id,
     title: 'Test note',
     content: '',
     categoryId: null,
+    templateType: 'MARKDOWN',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     version: 1,
@@ -43,10 +43,14 @@ function createNoteRecord(id: string, overrides: Partial<NoteRecord> = {}): Note
   };
 }
 
-function createCategoryRecord(id: string, overrides: Partial<CategoryRecord> = {}): CategoryRecord {
+function createCategoryRecord(
+  id: string,
+  overrides: Partial<CategoryRecord> = {},
+): CategoryRecord {
   return {
     id,
     name: 'Category',
+    description: '',
     icon: null,
     parentId: null,
     position: 0,
@@ -78,8 +82,13 @@ function createRemoteChange(
 describe('conflict repository persistence', () => {
   it('creates an open conflict and counts it', async () => {
     const note = createNoteRecord('note-1', { version: 1 });
-    await db.notes.add(note);
-    const remote = createRemoteChange('note', note.id, { ...note, content: 'Remote', version: 2 }, 2);
+    await storage.notes.add(note);
+    const remote = createRemoteChange(
+      'note',
+      note.id,
+      { ...note, content: 'Remote', version: 2 },
+      2,
+    );
 
     const id = await conflicts.create({
       entityType: 'note',
@@ -88,7 +97,12 @@ describe('conflict repository persistence', () => {
       localVersion: 1,
       remoteVersion: 2,
       localSnapshot: { version: 1, entity: note },
-      remoteSnapshot: { version: 2, entity: remote.payload, changedAt: remote.changedAt, operation: 'update' },
+      remoteSnapshot: {
+        version: 2,
+        entity: remote.payload,
+        changedAt: remote.changedAt,
+        operation: 'update',
+      },
     });
 
     expect(await conflicts.countOpen()).toBe(1);
@@ -104,7 +118,7 @@ describe('conflict repository persistence', () => {
 
   it('updates an existing open conflict instead of duplicating it', async () => {
     const note = createNoteRecord('note-2');
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const first = await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -134,7 +148,7 @@ describe('conflict repository persistence', () => {
     const unsubscribe = subscribeToConflictCreations(listener);
 
     const note = createNoteRecord('note-notify');
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const id = await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -163,7 +177,7 @@ describe('conflict repository persistence', () => {
   it('lists open and resolved conflicts separately', async () => {
     const first = createNoteRecord('note-open');
     const second = createNoteRecord('note-resolved');
-    await db.notes.bulkAdd([first, second]);
+    await storage.notes.bulkAdd([first, second]);
     const openId = await conflicts.create({
       entityType: 'note',
       entityId: first.id,
@@ -185,7 +199,9 @@ describe('conflict repository persistence', () => {
     await conflicts.dismiss(resolvedId);
 
     expect(await conflicts.listOpen()).toMatchObject([{ id: openId }]);
-    expect(await conflicts.listResolved()).toMatchObject([{ id: resolvedId, status: 'dismissed' }]);
+    expect(await conflicts.listResolved()).toMatchObject([
+      { id: resolvedId, status: 'dismissed' },
+    ]);
   });
 });
 
@@ -195,7 +211,7 @@ describe('conflict resolution workflows', () => {
       content: 'Local content',
       syncStatus: 'conflict',
     });
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const conflictId = await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -203,7 +219,12 @@ describe('conflict resolution workflows', () => {
       localVersion: 1,
       remoteVersion: 2,
       localSnapshot: { version: 1, entity: note, operation: 'none' },
-      remoteSnapshot: { version: 2, entity: { ...note, content: 'Remote content', version: 2 }, operation: 'update', changedAt: '2026-01-01T00:01:00.000Z' },
+      remoteSnapshot: {
+        version: 2,
+        entity: { ...note, content: 'Remote content', version: 2 },
+        operation: 'update',
+        changedAt: '2026-01-01T00:01:00.000Z',
+      },
       baseVersion: 1,
     });
 
@@ -218,9 +239,12 @@ describe('conflict resolution workflows', () => {
       status: 'pending',
       payload: { content: 'Local content' },
     });
-    expect((await db.notes.get(note.id))?.syncStatus).toBe('pending');
+    expect((await storage.notes.get(note.id))?.syncStatus).toBe('pending');
     const resolved = await conflicts.find(conflictId);
-    expect(resolved).toMatchObject({ status: 'resolved', resolution: 'keep_mine' });
+    expect(resolved).toMatchObject({
+      status: 'resolved',
+      resolution: 'keep_mine',
+    });
     expect(resolved?.resolvedAt).toBeDefined();
   });
 
@@ -229,8 +253,13 @@ describe('conflict resolution workflows', () => {
       content: 'Local content',
       syncStatus: 'conflict',
     });
-    await db.notes.add(note);
-    const remote = { ...note, content: 'Remote content', version: 2, updatedAt: '2026-01-01T00:01:00.000Z' };
+    await storage.notes.add(note);
+    const remote = {
+      ...note,
+      content: 'Remote content',
+      version: 2,
+      updatedAt: '2026-01-01T00:01:00.000Z',
+    };
     await outbox.add({
       id: crypto.randomUUID(),
       entityId: note.id,
@@ -249,12 +278,17 @@ describe('conflict resolution workflows', () => {
       localVersion: 1,
       remoteVersion: 2,
       localSnapshot: { version: 1, entity: note },
-      remoteSnapshot: { version: 2, entity: remote, changedAt: '2026-01-01T00:01:00.000Z', operation: 'update' },
+      remoteSnapshot: {
+        version: 2,
+        entity: remote,
+        changedAt: '2026-01-01T00:01:00.000Z',
+        operation: 'update',
+      },
     });
 
     await conflicts.resolveKeepRemote(conflictId);
 
-    expect(await db.notes.get(note.id)).toMatchObject({
+    expect(await storage.notes.get(note.id)).toMatchObject({
       content: 'Remote content',
       version: 2,
       syncStatus: 'synced',
@@ -269,7 +303,7 @@ describe('conflict resolution workflows', () => {
       version: 1,
       syncStatus: 'conflict',
     });
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const remote = { ...note, content: 'Remote', version: 2 };
     const conflictId = await conflicts.create({
       entityType: 'note',
@@ -281,16 +315,22 @@ describe('conflict resolution workflows', () => {
       remoteSnapshot: { version: 2, entity: remote, operation: 'update' },
     });
 
-    await conflicts.resolveMergeManually(conflictId, { content: 'Merged content' });
+    await conflicts.resolveMergeManually(conflictId, {
+      content: 'Merged content',
+    });
 
-    expect(await db.notes.get(note.id)).toMatchObject({
+    expect(await storage.notes.get(note.id)).toMatchObject({
       content: 'Merged content',
       version: 2,
       syncStatus: 'pending',
     });
     const operations = await outbox.listForEntity(note.id, 'note');
     expect(operations).toHaveLength(1);
-    expect(operations[0]).toMatchObject({ operation: 'update', baseVersion: 2, status: 'pending' });
+    expect(operations[0]).toMatchObject({
+      operation: 'update',
+      baseVersion: 2,
+      status: 'pending',
+    });
   });
 
   it('Delete Mine accepts the remote deletion and marks the note as synced', async () => {
@@ -298,7 +338,7 @@ describe('conflict resolution workflows', () => {
       content: 'Local edit',
       syncStatus: 'conflict',
     });
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const conflictId = await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -306,12 +346,17 @@ describe('conflict resolution workflows', () => {
       localVersion: 1,
       remoteVersion: 2,
       localSnapshot: { version: 1, entity: note, operation: 'none' },
-      remoteSnapshot: { version: 2, entity: { ...note, deletedAt: '2026-01-01T00:01:00.000Z' }, operation: 'delete', changedAt: '2026-01-01T00:01:00.000Z' },
+      remoteSnapshot: {
+        version: 2,
+        entity: { ...note, deletedAt: '2026-01-01T00:01:00.000Z' },
+        operation: 'delete',
+        changedAt: '2026-01-01T00:01:00.000Z',
+      },
     });
 
     await conflicts.resolveDeleteMine(conflictId);
 
-    expect(await db.notes.get(note.id)).toMatchObject({
+    expect(await storage.notes.get(note.id)).toMatchObject({
       deletedAt: '2026-01-01T00:01:00.000Z',
       version: 2,
       syncStatus: 'synced',
@@ -325,7 +370,7 @@ describe('conflict resolution workflows', () => {
       content: 'Keep mine',
       syncStatus: 'conflict',
     });
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const conflictId = await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -333,12 +378,17 @@ describe('conflict resolution workflows', () => {
       localVersion: 1,
       remoteVersion: 2,
       localSnapshot: { version: 1, entity: note, operation: 'none' },
-      remoteSnapshot: { version: 2, entity: { ...note, deletedAt: '2026-01-01T00:01:00.000Z' }, operation: 'delete', changedAt: '2026-01-01T00:01:00.000Z' },
+      remoteSnapshot: {
+        version: 2,
+        entity: { ...note, deletedAt: '2026-01-01T00:01:00.000Z' },
+        operation: 'delete',
+        changedAt: '2026-01-01T00:01:00.000Z',
+      },
     });
 
     await conflicts.resolveRestore(conflictId);
 
-    expect(await db.notes.get(note.id)).toMatchObject({
+    expect(await storage.notes.get(note.id)).toMatchObject({
       content: 'Keep mine',
       syncStatus: 'pending',
     });
@@ -353,7 +403,7 @@ describe('conflict resolution workflows', () => {
       content: 'Local only',
       syncStatus: 'conflict',
     });
-    await db.notes.add(note);
+    await storage.notes.add(note);
     const conflictId = await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -367,14 +417,22 @@ describe('conflict resolution workflows', () => {
     await conflicts.dismiss(conflictId);
 
     expect(await conflicts.countOpen()).toBe(0);
-    expect(await conflicts.find(conflictId)).toMatchObject({ status: 'dismissed', resolution: 'dismiss' });
-    expect(await db.notes.get(note.id)).toMatchObject({ content: 'Local only' });
+    expect(await conflicts.find(conflictId)).toMatchObject({
+      status: 'dismissed',
+      resolution: 'dismiss',
+    });
+    expect(await storage.notes.get(note.id)).toMatchObject({
+      content: 'Local only',
+    });
   });
 
   it('Category conflict: Keep Remote applies the remote parent when the move is cycle-free', async () => {
     const parent = createCategoryRecord('parent');
-    const moved = createCategoryRecord('moved', { parentId: 'parent', position: 0 });
-    await db.categories.bulkAdd([parent, moved]);
+    const moved = createCategoryRecord('moved', {
+      parentId: 'parent',
+      position: 0,
+    });
+    await storage.categories.bulkAdd([parent, moved]);
     const remote = { ...moved, parentId: null };
     const conflictId = await conflicts.create({
       entityType: 'category',
@@ -383,12 +441,17 @@ describe('conflict resolution workflows', () => {
       localVersion: 1,
       remoteVersion: 2,
       localSnapshot: { version: 1, entity: moved },
-      remoteSnapshot: { version: 2, entity: remote, operation: 'update', changedAt: '2026-01-01T00:01:00.000Z' },
+      remoteSnapshot: {
+        version: 2,
+        entity: remote,
+        operation: 'update',
+        changedAt: '2026-01-01T00:01:00.000Z',
+      },
     });
 
     await conflicts.resolveKeepRemote(conflictId);
 
-    expect(await db.categories.get(moved.id)).toMatchObject({
+    expect(await storage.categories.get(moved.id)).toMatchObject({
       parentId: null,
       version: 2,
       syncStatus: 'synced',
@@ -408,12 +471,19 @@ describe('conflict resolution workflows', () => {
       localVersion: child.version,
       remoteVersion: child.version + 1,
       localSnapshot: { version: child.version, entity: child },
-      remoteSnapshot: { version: child.version + 1, entity: remote, operation: 'update', changedAt: '2026-01-01T00:01:00.000Z' },
+      remoteSnapshot: {
+        version: child.version + 1,
+        entity: remote,
+        operation: 'update',
+        changedAt: '2026-01-01T00:01:00.000Z',
+      },
     });
 
-    await expect(conflicts.resolveKeepRemote(conflictId)).rejects.toMatchObject({
-      code: 'CATEGORY_CYCLE',
-    });
+    await expect(conflicts.resolveKeepRemote(conflictId)).rejects.toMatchObject(
+      {
+        code: 'CATEGORY_CYCLE',
+      },
+    );
     expect(await conflicts.countOpen()).toBe(1);
   });
 });
@@ -421,7 +491,7 @@ describe('conflict resolution workflows', () => {
 describe('conflict counts and reloading', () => {
   it('keeps conflicts across database reopens', async () => {
     const note = createNoteRecord('note-persist');
-    await db.notes.add(note);
+    await storage.notes.add(note);
     await conflicts.create({
       entityType: 'note',
       entityId: note.id,
@@ -433,8 +503,8 @@ describe('conflict counts and reloading', () => {
     });
 
     expect(await conflicts.countOpen()).toBe(1);
-    db.close();
-    await db.open();
+    storage.close();
+    await storage.open();
 
     const reloaded = new ConflictRepository(outbox);
     expect(await reloaded.countOpen()).toBe(1);
@@ -443,8 +513,8 @@ describe('conflict counts and reloading', () => {
   });
 
   it('throws a typed error when resolving a missing conflict', async () => {
-    await expect(conflicts.resolveKeepMine('does-not-exist')).rejects.toBeInstanceOf(
-      ConflictRepositoryError,
-    );
+    await expect(
+      conflicts.resolveKeepMine('does-not-exist'),
+    ).rejects.toBeInstanceOf(ConflictRepositoryError);
   });
 });

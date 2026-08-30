@@ -1,4 +1,4 @@
-import { db, type NoteRecord } from '../../storage/database';
+import { storage, type NoteRecord } from '../../storage';
 import { NoteSearchIndex } from './search-index';
 import type { SearchResult } from './search.types';
 
@@ -6,8 +6,11 @@ export class SearchService {
   private index: NoteSearchIndex;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
-  private onCreating: ((_primKey: unknown, obj: NoteRecord) => void) | null = null;
-  private onUpdating: ((modifications: object, primKey: unknown, obj: NoteRecord) => void) | null = null;
+  private onCreating: ((_primKey: unknown, obj: NoteRecord) => void) | null =
+    null;
+  private onUpdating:
+    | ((modifications: object, primKey: unknown, obj: NoteRecord) => void)
+    | null = null;
   private onDeleting: ((primKey: unknown) => void) | null = null;
 
   constructor() {
@@ -29,15 +32,15 @@ export class SearchService {
 
   destroy(): void {
     if (this.onCreating) {
-      db.notes.hook('creating').unsubscribe(this.onCreating);
+      storage.notes.hook('creating').unsubscribe(this.onCreating);
       this.onCreating = null;
     }
     if (this.onUpdating) {
-      db.notes.hook('updating').unsubscribe(this.onUpdating);
+      storage.notes.hook('updating').unsubscribe(this.onUpdating);
       this.onUpdating = null;
     }
     if (this.onDeleting) {
-      db.notes.hook('deleting').unsubscribe(this.onDeleting);
+      storage.notes.hook('deleting').unsubscribe(this.onDeleting);
       this.onDeleting = null;
     }
     this.index.clear();
@@ -54,9 +57,13 @@ export class SearchService {
         this.index.addNote(obj);
       }
     };
-    db.notes.hook('creating').subscribe(this.onCreating);
+    storage.notes.hook('creating').subscribe(this.onCreating);
 
-    this.onUpdating = (modifications: object, primKey: unknown, obj: NoteRecord) => {
+    this.onUpdating = (
+      modifications: object,
+      primKey: unknown,
+      obj: NoteRecord,
+    ) => {
       const updated: NoteRecord = {
         ...obj,
         ...(modifications as Partial<NoteRecord>),
@@ -69,12 +76,12 @@ export class SearchService {
         this.index.addNote(updated);
       }
     };
-    db.notes.hook('updating').subscribe(this.onUpdating);
+    storage.notes.hook('updating').subscribe(this.onUpdating);
 
     this.onDeleting = (primKey: unknown) => {
       this.index.removeNote(primKey as string);
     };
-    db.notes.hook('deleting').subscribe(this.onDeleting);
+    storage.notes.hook('deleting').subscribe(this.onDeleting);
   }
 }
 

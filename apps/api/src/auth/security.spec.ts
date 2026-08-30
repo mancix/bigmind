@@ -22,7 +22,7 @@ describe('JWT_SECRET validation', () => {
       if (!process.env.JWT_SECRET) {
         throw new Error(
           'JWT_SECRET environment variable is required. ' +
-          'Set JWT_SECRET to a secure random string before starting the API.',
+            'Set JWT_SECRET to a secure random string before starting the API.',
         );
       }
     };

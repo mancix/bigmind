@@ -2,15 +2,19 @@ import 'fake-indexeddb/auto';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { db, type NoteRecord } from '../../storage/database';
+import { storage, type NoteRecord } from '../../storage';
 import { NoteSearchIndex } from './search-index';
 
-function createNote(id: string, overrides: Partial<NoteRecord> = {}): NoteRecord {
+function createNote(
+  id: string,
+  overrides: Partial<NoteRecord> = {},
+): NoteRecord {
   return {
     id,
     title: 'Untitled note',
     content: '',
     categoryId: null,
+    templateType: 'MARKDOWN',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     version: 1,
@@ -20,12 +24,12 @@ function createNote(id: string, overrides: Partial<NoteRecord> = {}): NoteRecord
 }
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
-  await db.delete();
+  await storage.delete();
 });
 
 describe('NoteSearchIndex', () => {
@@ -35,9 +39,19 @@ describe('NoteSearchIndex', () => {
   });
 
   it('initializes from Dexie with non-deleted notes', async () => {
-    await db.notes.add(createNote('1', { title: 'Hello world', content: 'Some content' }));
-    await db.notes.add(createNote('2', { title: 'Goodbye world', content: 'More content' }));
-    await db.notes.add(createNote('3', { title: 'Deleted note', content: 'Should not appear', deletedAt: '2026-01-02T00:00:00.000Z' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Hello world', content: 'Some content' }),
+    );
+    await storage.notes.add(
+      createNote('2', { title: 'Goodbye world', content: 'More content' }),
+    );
+    await storage.notes.add(
+      createNote('3', {
+        title: 'Deleted note',
+        content: 'Should not appear',
+        deletedAt: '2026-01-02T00:00:00.000Z',
+      }),
+    );
 
     const index = new NoteSearchIndex();
     await index.initialize();
@@ -58,7 +72,9 @@ describe('NoteSearchIndex', () => {
   });
 
   it('searches case-insensitively', async () => {
-    await db.notes.add(createNote('1', { title: 'JavaScript Guide', content: 'Learn JS' }));
+    await storage.notes.add(
+      createNote('1', { title: 'JavaScript Guide', content: 'Learn JS' }),
+    );
 
     const index = new NoteSearchIndex();
     await index.initialize();
@@ -76,7 +92,12 @@ describe('NoteSearchIndex', () => {
   });
 
   it('supports partial word prefix matching', async () => {
-    await db.notes.add(createNote('1', { title: 'Motorcycle maintenance', content: 'Tips for bikes' }));
+    await storage.notes.add(
+      createNote('1', {
+        title: 'Motorcycle maintenance',
+        content: 'Tips for bikes',
+      }),
+    );
 
     const index = new NoteSearchIndex();
     await index.initialize();
@@ -87,8 +108,18 @@ describe('NoteSearchIndex', () => {
   });
 
   it('ranks title matches higher than content matches', async () => {
-    await db.notes.add(createNote('1', { title: 'Cooking recipes', content: 'Some text about cars' }));
-    await db.notes.add(createNote('2', { title: 'Car repair', content: 'Cooking is fun but cars are complex' }));
+    await storage.notes.add(
+      createNote('1', {
+        title: 'Cooking recipes',
+        content: 'Some text about cars',
+      }),
+    );
+    await storage.notes.add(
+      createNote('2', {
+        title: 'Car repair',
+        content: 'Cooking is fun but cars are complex',
+      }),
+    );
 
     const index = new NoteSearchIndex();
     await index.initialize();
@@ -101,8 +132,16 @@ describe('NoteSearchIndex', () => {
   });
 
   it('excludes deleted notes', async () => {
-    await db.notes.add(createNote('1', { title: 'Active note', content: 'Searchable' }));
-    await db.notes.add(createNote('2', { title: 'Deleted note', content: 'Hidden', deletedAt: '2026-01-02T00:00:00.000Z' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Active note', content: 'Searchable' }),
+    );
+    await storage.notes.add(
+      createNote('2', {
+        title: 'Deleted note',
+        content: 'Hidden',
+        deletedAt: '2026-01-02T00:00:00.000Z',
+      }),
+    );
 
     const index = new NoteSearchIndex();
     await index.initialize();
@@ -116,8 +155,12 @@ describe('NoteSearchIndex', () => {
     const index = new NoteSearchIndex();
     await index.initialize();
 
-    await db.notes.add(createNote('1', { title: 'New note', content: 'Fresh content' }));
-    await index.addNote(createNote('1', { title: 'New note', content: 'Fresh content' }));
+    await storage.notes.add(
+      createNote('1', { title: 'New note', content: 'Fresh content' }),
+    );
+    await index.addNote(
+      createNote('1', { title: 'New note', content: 'Fresh content' }),
+    );
 
     const results = index.search('fresh');
     expect(results).toHaveLength(1);
@@ -125,7 +168,9 @@ describe('NoteSearchIndex', () => {
   });
 
   it('removes a note from the index', async () => {
-    await db.notes.add(createNote('1', { title: 'Temporary', content: 'Gone soon' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Temporary', content: 'Gone soon' }),
+    );
     const index = new NoteSearchIndex();
     await index.initialize();
 
@@ -136,31 +181,45 @@ describe('NoteSearchIndex', () => {
   });
 
   it('removes note from index when addNote receives a deleted note', async () => {
-    await db.notes.add(createNote('1', { title: 'Will be deleted', content: 'Some text' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Will be deleted', content: 'Some text' }),
+    );
     const index = new NoteSearchIndex();
     await index.initialize();
 
     expect(index.search('deleted')).toHaveLength(1);
 
-    await index.addNote(createNote('1', { title: 'Will be deleted', content: 'Some text', deletedAt: '2026-01-02T00:00:00.000Z' }));
+    await index.addNote(
+      createNote('1', {
+        title: 'Will be deleted',
+        content: 'Some text',
+        deletedAt: '2026-01-02T00:00:00.000Z',
+      }),
+    );
     expect(index.search('deleted')).toHaveLength(0);
   });
 
   it('updates a note in the index', async () => {
-    await db.notes.add(createNote('1', { title: 'Alpha concept', content: 'First version' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Alpha concept', content: 'First version' }),
+    );
     const index = new NoteSearchIndex();
     await index.initialize();
 
     expect(index.search('alpha')).toHaveLength(1);
     expect(index.search('beta')).toHaveLength(0);
 
-    await index.addNote(createNote('1', { title: 'Beta concept', content: 'Second version' }));
+    await index.addNote(
+      createNote('1', { title: 'Beta concept', content: 'Second version' }),
+    );
     expect(index.search('beta')).toHaveLength(1);
     expect(index.search('alpha')).toHaveLength(0);
   });
 
   it('clears the index', async () => {
-    await db.notes.add(createNote('1', { title: 'Something', content: 'Content' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Something', content: 'Content' }),
+    );
     const index = new NoteSearchIndex();
     await index.initialize();
 
@@ -173,8 +232,9 @@ describe('NoteSearchIndex', () => {
   });
 
   it('generates a preview snippet around the matched term', async () => {
-    const content = 'This is a very long paragraph about programming languages. JavaScript is widely used for web development. Python is popular for data science. Both have extensive ecosystems.';
-    await db.notes.add(createNote('1', { title: 'Programming', content }));
+    const content =
+      'This is a very long paragraph about programming languages. JavaScript is widely used for web development. Python is popular for data science. Both have extensive ecosystems.';
+    await storage.notes.add(createNote('1', { title: 'Programming', content }));
 
     const index = new NoteSearchIndex();
     await index.initialize();
@@ -186,7 +246,9 @@ describe('NoteSearchIndex', () => {
   });
 
   it('returns empty for blank query', async () => {
-    await db.notes.add(createNote('1', { title: 'Test', content: 'Hello' }));
+    await storage.notes.add(
+      createNote('1', { title: 'Test', content: 'Hello' }),
+    );
     const index = new NoteSearchIndex();
     await index.initialize();
 

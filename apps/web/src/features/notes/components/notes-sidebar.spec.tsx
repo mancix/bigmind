@@ -5,11 +5,20 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
 
 import type { SearchResult } from '../../search/search.types';
 
-const mockSearch = vi.hoisted(() => vi.fn<(_query: string) => SearchResult[]>());
+const mockSearch = vi.hoisted(() =>
+  vi.fn<(_query: string) => SearchResult[]>(),
+);
 
 vi.mock('../../search/search-service', () => ({
   searchService: {
@@ -21,34 +30,56 @@ vi.mock('../../search/search-service', () => ({
 
 import { AuthProvider } from '../../auth/auth-context';
 import { WorkspaceProvider } from '../../workspaces/workspace-context';
-import { db, type NoteRecord } from '../../../storage/database';
+import { storage, type NoteRecord } from '../../../storage';
 import { NotesSidebar } from './notes-sidebar';
 
-function createNote(id: string, overrides: Partial<NoteRecord> = {}): NoteRecord {
+function createNote(
+  id: string,
+  overrides: Partial<NoteRecord> = {},
+): NoteRecord {
   return {
-    id, title: 'Untitled note', content: '', categoryId: null,
+    id,
+    title: 'Untitled note',
+    content: '',
+    categoryId: null,
     templateType: 'MARKDOWN',
-    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    version: 1, syncStatus: 'synced', ...overrides,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    version: 1,
+    syncStatus: 'synced',
+    ...overrides,
   };
 }
 
 function renderSidebar() {
   const root = createRootRoute({ component: () => <Outlet /> });
-  const indexRoute = createRoute({ path: '/', component: () => <NotesSidebar />, getParentRoute: () => root });
+  const indexRoute = createRoute({
+    path: '/',
+    component: () => <NotesSidebar />,
+    getParentRoute: () => root,
+  });
   root.addChildren([indexRoute]);
-  const router = createRouter({ routeTree: root, history: createMemoryHistory({ initialEntries: ['/'] }) });
-  return render(<AuthProvider><WorkspaceProvider><RouterProvider router={router} /></WorkspaceProvider></AuthProvider>);
+  const router = createRouter({
+    routeTree: root,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+  return render(
+    <AuthProvider>
+      <WorkspaceProvider>
+        <RouterProvider router={router} />
+      </WorkspaceProvider>
+    </AuthProvider>,
+  );
 }
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
   cleanup();
-  await db.delete();
+  await storage.delete();
 });
 
 describe('NotesSidebar search', () => {
@@ -58,7 +89,7 @@ describe('NotesSidebar search', () => {
   });
 
   it('shows notes from current category when not searching', async () => {
-    await db.notes.bulkAdd([
+    await storage.notes.bulkAdd([
       createNote('1', { title: 'Note one', content: 'Alpha' }),
       createNote('2', { title: 'Note two', content: 'Beta' }),
     ]);
@@ -71,10 +102,15 @@ describe('NotesSidebar search', () => {
 
   it('shows search results when typing a query', async () => {
     mockSearch.mockReturnValue([
-      { id: '1', title: 'Apple pie', score: 1, preview: 'How to bake an apple pie' },
+      {
+        id: '1',
+        title: 'Apple pie',
+        score: 1,
+        preview: 'How to bake an apple pie',
+      },
     ]);
 
-    await db.notes.bulkAdd([
+    await storage.notes.bulkAdd([
       createNote('1', { title: 'Apple pie', content: 'How to bake' }),
     ]);
 
@@ -89,7 +125,7 @@ describe('NotesSidebar search', () => {
   it('shows "No notes found" when search yields no results', async () => {
     mockSearch.mockReturnValue([]);
 
-    await db.notes.bulkAdd([
+    await storage.notes.bulkAdd([
       createNote('1', { title: 'Apple pie', content: 'How to bake' }),
     ]);
 
@@ -103,10 +139,15 @@ describe('NotesSidebar search', () => {
 
   it('switches back to category notes when search is cleared', async () => {
     mockSearch.mockReturnValue([
-      { id: '1', title: 'Apple pie', score: 1, preview: 'How to bake an apple pie' },
+      {
+        id: '1',
+        title: 'Apple pie',
+        score: 1,
+        preview: 'How to bake an apple pie',
+      },
     ]);
 
-    await db.notes.bulkAdd([
+    await storage.notes.bulkAdd([
       createNote('1', { title: 'Apple pie', content: 'How to bake' }),
       createNote('2', { title: 'Banana bread', content: 'Easy recipe' }),
     ]);
@@ -124,10 +165,15 @@ describe('NotesSidebar search', () => {
 
   it('links search results to the note page', async () => {
     mockSearch.mockReturnValue([
-      { id: '1', title: 'Apple pie', score: 1, preview: 'How to bake an apple pie' },
+      {
+        id: '1',
+        title: 'Apple pie',
+        score: 1,
+        preview: 'How to bake an apple pie',
+      },
     ]);
 
-    await db.notes.bulkAdd([
+    await storage.notes.bulkAdd([
       createNote('1', { title: 'Apple pie', content: 'How to bake' }),
     ]);
 

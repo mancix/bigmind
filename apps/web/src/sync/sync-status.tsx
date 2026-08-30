@@ -14,10 +14,7 @@ export function SyncStatus() {
     (): SyncStatusValue => 'idle',
   );
   const pendingCount = useLiveQuery(() => outboxRepository.countPending(), []);
-  const conflictCount = useLiveQuery(
-    () => conflictRepository.countOpen(),
-    [],
-  );
+  const conflictCount = useLiveQuery(() => conflictRepository.countOpen(), []);
   const lastSyncTimestamp = useLiveQuery(
     () => syncStateRepository.getLastSyncTimestamp(),
     [],
@@ -85,6 +82,7 @@ function getLabel({
 
 function getLabelColor(status: SyncStatusValue, conflictCount: number): string {
   if (status === 'error' || conflictCount > 0) return 'text-red-600';
-  if (status === 'offline' || status === 'auth_required') return 'text-amber-600';
+  if (status === 'offline' || status === 'auth_required')
+    return 'text-amber-600';
   return 'text-slate-500';
 }

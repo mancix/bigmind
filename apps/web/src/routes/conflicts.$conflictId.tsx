@@ -19,7 +19,11 @@ import {
   getEntityTitle,
 } from '../features/conflicts/conflict-format';
 import { categoryRepository } from '../features/categories/category-repository';
-import { type CategoryRecord, type ConflictRecord, type NoteRecord } from '../storage/database';
+import {
+  type CategoryRecord,
+  type ConflictRecord,
+  type NoteRecord,
+} from '../storage';
 
 export const Route = createFileRoute('/conflicts/$conflictId')({
   loader: async ({ params }) => {
@@ -73,18 +77,25 @@ function ConflictDetailPage() {
           {getEntityTitle(conflict) ?? 'Conflicting entity'}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {formatEntityType(conflict.entityType)} · {formatConflictType(conflict.conflictType)} · Created {formatConflictDate(conflict.createdAt)}
+          {formatEntityType(conflict.entityType)} ·{' '}
+          {formatConflictType(conflict.conflictType)} · Created{' '}
+          {formatConflictDate(conflict.createdAt)}
         </p>
         {conflict.status !== 'open' ? (
           <p className="mt-2 text-xs text-slate-400">
             {conflict.status === 'dismissed' ? 'Dismissed' : 'Resolved'} via{' '}
             {conflict.resolution}
-            {conflict.resolvedAt ? ` on ${formatConflictDate(conflict.resolvedAt)}` : ''}
+            {conflict.resolvedAt
+              ? ` on ${formatConflictDate(conflict.resolvedAt)}`
+              : ''}
           </p>
         ) : null}
       </header>
 
-      <ConflictDetailView conflict={conflict} onResolved={() => void navigate({ to: '/conflicts' })} />
+      <ConflictDetailView
+        conflict={conflict}
+        onResolved={() => void navigate({ to: '/conflicts' })}
+      />
     </section>
   );
 }
@@ -108,7 +119,14 @@ function ConflictDetailView({
     }
   }, [conflict, mergeContent]);
 
-  async function run(strategy: 'keep_mine' | 'keep_remote' | 'merge_manually' | 'restore' | 'delete_mine') {
+  async function run(
+    strategy:
+      | 'keep_mine'
+      | 'keep_remote'
+      | 'merge_manually'
+      | 'restore'
+      | 'delete_mine',
+  ) {
     if (conflict.status !== 'open') return;
 
     setIsBusy(true);
@@ -188,7 +206,9 @@ function ConflictDetailView({
           setIsBusy(true);
           setError(null);
           try {
-            await conflictRepository.resolveMergeManually(conflict.id, { title: custom });
+            await conflictRepository.resolveMergeManually(conflict.id, {
+              title: custom,
+            });
             onResolved();
           } catch (err) {
             setError(err instanceof Error ? err.message : 'Unable to resolve.');
@@ -370,10 +390,39 @@ function ContentView({
       </Column>
       <ErrorBanner error={error} />
       <ButtonRow>
-        <button type="button" onClick={onKeepMine} disabled={isBusy} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400">Keep Mine</button>
-        <button type="button" onClick={onKeepRemote} disabled={isBusy} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:bg-slate-100">Keep Remote</button>
-        <button type="button" form="merge-form" onClick={onMerge} disabled={isBusy} className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50">Merge Manually</button>
-        <button type="button" onClick={onDismiss} disabled={isBusy} className="ml-auto rounded-md px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900">Dismiss</button>
+        <button
+          type="button"
+          onClick={onKeepMine}
+          disabled={isBusy}
+          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400"
+        >
+          Keep Mine
+        </button>
+        <button
+          type="button"
+          onClick={onKeepRemote}
+          disabled={isBusy}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:bg-slate-100"
+        >
+          Keep Remote
+        </button>
+        <button
+          type="button"
+          form="merge-form"
+          onClick={onMerge}
+          disabled={isBusy}
+          className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+        >
+          Merge Manually
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          disabled={isBusy}
+          className="ml-auto rounded-md px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900"
+        >
+          Dismiss
+        </button>
       </ButtonRow>
     </div>
   );
@@ -419,17 +468,42 @@ function RenameNoteView({
       </Column>
       <ErrorBanner error={error} />
       <ButtonRow>
-        <button type="button" onClick={onKeepMine} disabled={isBusy} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400">Keep Mine</button>
-        <button type="button" onClick={onKeepRemote} disabled={isBusy} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:bg-slate-100">Keep Remote</button>
         <button
           type="button"
-          onClick={() => customTitle.trim() ? void onUseCustom(customTitle.trim()) : undefined}
+          onClick={onKeepMine}
+          disabled={isBusy}
+          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400"
+        >
+          Keep Mine
+        </button>
+        <button
+          type="button"
+          onClick={onKeepRemote}
+          disabled={isBusy}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:bg-slate-100"
+        >
+          Keep Remote
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            customTitle.trim()
+              ? void onUseCustom(customTitle.trim())
+              : undefined
+          }
           disabled={isBusy}
           className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
         >
           Use Custom Title
         </button>
-        <button type="button" onClick={onDismiss} disabled={isBusy} className="ml-auto rounded-md px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900">Dismiss</button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          disabled={isBusy}
+          className="ml-auto rounded-md px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900"
+        >
+          Dismiss
+        </button>
       </ButtonRow>
     </div>
   );
@@ -450,14 +524,23 @@ function CategoryMoveView({
   const local = conflict.localSnapshot.entity as CategoryRecord | undefined;
   const remote = conflict.remoteSnapshot.entity as CategoryRecord | undefined;
   const categoriesLiveData = useLiveQuery(() => categoryRepository.list(), []);
-  const categories = useMemo(() => categoriesLiveData ?? [], [categoriesLiveData]);
+  const categories = useMemo(
+    () => categoriesLiveData ?? [],
+    [categoriesLiveData],
+  );
 
   const localParentName = useMemo(
-    () => (local?.parentId ? categories.find((c) => c.id === local.parentId)?.name : 'No parent') ?? 'No parent',
+    () =>
+      (local?.parentId
+        ? categories.find((c) => c.id === local.parentId)?.name
+        : 'No parent') ?? 'No parent',
     [categories, local],
   );
   const remoteParentName = useMemo(
-    () => (remote?.parentId ? categories.find((c) => c.id === remote.parentId)?.name : 'No parent') ?? 'No parent',
+    () =>
+      (remote?.parentId
+        ? categories.find((c) => c.id === remote.parentId)?.name
+        : 'No parent') ?? 'No parent',
     [categories, remote],
   );
 
@@ -467,7 +550,8 @@ function CategoryMoveView({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Column title="Current parent">
           <p className="text-sm text-slate-800">
-            {categories.find((c) => c.id === local?.parentId)?.name ?? 'No parent'}
+            {categories.find((c) => c.id === local?.parentId)?.name ??
+              'No parent'}
           </p>
         </Column>
         <Column title="Local parent">
@@ -534,9 +618,30 @@ function DeleteVsEditView({
       </p>
       <ErrorBanner error={error} />
       <ButtonRow>
-        <button type="button" onClick={onRestore} disabled={isBusy} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400">Restore Note</button>
-        <button type="button" onClick={onDeleteMine} disabled={isBusy} className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50">Delete Mine</button>
-        <button type="button" onClick={onKeep} disabled={isBusy} className="ml-auto rounded-md px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900">Dismiss</button>
+        <button
+          type="button"
+          onClick={onRestore}
+          disabled={isBusy}
+          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400"
+        >
+          Restore Note
+        </button>
+        <button
+          type="button"
+          onClick={onDeleteMine}
+          disabled={isBusy}
+          className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+        >
+          Delete Mine
+        </button>
+        <button
+          type="button"
+          onClick={onKeep}
+          disabled={isBusy}
+          className="ml-auto rounded-md px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900"
+        >
+          Dismiss
+        </button>
       </ButtonRow>
     </div>
   );
@@ -547,7 +652,9 @@ function EntityInfo({ conflict }: { conflict: ConflictRecord }) {
     <dl className="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
       <div>
         <dt className="text-xs uppercase text-slate-500">Entity type</dt>
-        <dd className="text-slate-800">{formatEntityType(conflict.entityType)}</dd>
+        <dd className="text-slate-800">
+          {formatEntityType(conflict.entityType)}
+        </dd>
       </div>
       <div>
         <dt className="text-xs uppercase text-slate-500">Local version</dt>
@@ -559,7 +666,9 @@ function EntityInfo({ conflict }: { conflict: ConflictRecord }) {
       </div>
       <div>
         <dt className="text-xs uppercase text-slate-500">Created</dt>
-        <dd className="text-slate-800">{formatConflictDate(conflict.createdAt)}</dd>
+        <dd className="text-slate-800">
+          {formatConflictDate(conflict.createdAt)}
+        </dd>
       </div>
     </dl>
   );
@@ -571,19 +680,31 @@ function SideBySide({ conflict }: { conflict: ConflictRecord }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <Column title="Local changes">
-        <pre className="whitespace-pre-wrap text-sm text-slate-800">{local?.content ?? '-'}</pre>
+        <pre className="whitespace-pre-wrap text-sm text-slate-800">
+          {local?.content ?? '-'}
+        </pre>
       </Column>
       <Column title="Remote changes">
-        <pre className="whitespace-pre-wrap text-sm text-slate-800">{remote?.content ?? '-'}</pre>
+        <pre className="whitespace-pre-wrap text-sm text-slate-800">
+          {remote?.content ?? '-'}
+        </pre>
       </Column>
     </div>
   );
 }
 
-function Column({ title, children }: { title: string; children: React.ReactNode }) {
+function Column({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {title}
+      </h3>
       <div className="min-h-8 text-slate-700">{children}</div>
     </div>
   );

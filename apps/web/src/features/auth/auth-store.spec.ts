@@ -1,24 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { authStore } from './auth-store';
+import { AuthStore, createLocalStorageTokenStorage } from '@bigmind/auth';
 
 const mockStorage = vi.hoisted(() => {
   let store: Record<string, string> = {};
   return {
     getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
   };
 });
 
 vi.hoisted(() => {
-  Object.defineProperty(globalThis, 'localStorage', { value: mockStorage, writable: true });
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: mockStorage,
+    writable: true,
+  });
   Object.defineProperty(globalThis, 'crypto', {
     value: { randomUUID: () => '00000000-0000-4000-8000-000000000000' },
     writable: true,
   });
 });
-
-import { authStore } from './auth-store';
 
 describe('AuthStore state model', () => {
   beforeEach(() => {
@@ -40,7 +49,10 @@ describe('AuthStore state model', () => {
   });
 
   it('transitions to authenticated when tokens are set', () => {
-    authStore.setTokens('access-123', 'refresh-456', { id: 'user-1', email: 'a@b.com' });
+    authStore.setTokens('access-123', 'refresh-456', {
+      id: 'user-1',
+      email: 'a@b.com',
+    });
 
     expect(authStore.getState()).toBe('authenticated');
     expect(authStore.isAuthenticated()).toBe(true);
@@ -59,7 +71,9 @@ describe('AuthStore state model', () => {
 
   it('transitions to offline_authenticated on network error during refresh', async () => {
     authStore.setTokens('a', 'r', { id: 'u1', email: 'a@b.com' });
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Failed to fetch'));
 
     const result = await authStore.refreshAccessToken();
 
@@ -103,7 +117,9 @@ describe('AuthStore state model', () => {
 
   it('preserves local data on offline_authenticated state', async () => {
     authStore.setTokens('a', 'r', { id: 'u1', email: 'a@b.com' });
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Network error'));
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Network error'));
 
     await authStore.refreshAccessToken();
 
@@ -113,18 +129,21 @@ describe('AuthStore state model', () => {
 
   it('transitions to authenticated after successful refresh following offline_authenticated', async () => {
     authStore.setTokens('a', 'r', { id: 'u1', email: 'a@b.com' });
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Network error'));
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Network error'));
 
     await authStore.refreshAccessToken();
     expect(authStore.getState()).toBe('offline_authenticated');
 
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        accessToken: 'new-access',
-        refreshToken: 'new-refresh',
-        user: { id: 'u1', email: 'a@b.com' },
-      }),
+      json: () =>
+        Promise.resolve({
+          accessToken: 'new-access',
+          refreshToken: 'new-refresh',
+          user: { id: 'u1', email: 'a@b.com' },
+        }),
     });
 
     const result = await authStore.refreshAccessToken();
@@ -159,10 +178,15 @@ describe('AuthStore state model', () => {
   it('loads tokens from localStorage on construction', () => {
     mockStorage.setItem('bigmind_access_token', 'stored-access');
     mockStorage.setItem('bigmind_refresh_token', 'stored-refresh');
-    mockStorage.setItem('bigmind_user', JSON.stringify({ id: 'u1', email: 'a@b.com' }));
+    mockStorage.setItem(
+      'bigmind_user',
+      JSON.stringify({ id: 'u1', email: 'a@b.com' }),
+    );
 
-    const AuthStoreClass = (authStore as any).constructor;
-    const store = new AuthStoreClass();
+    const store = new AuthStore({
+      tokenStorage: createLocalStorageTokenStorage(),
+      apiUrl: 'http://localhost:3000',
+    });
 
     expect(store.getAccessToken()).toBe('stored-access');
     expect(store.getRefreshToken()).toBe('stored-refresh');

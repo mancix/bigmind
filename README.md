@@ -54,13 +54,14 @@ See [LICENSE](LICENSE) for the full license text.
 
 ### Synchronization
 
-- Configurable fake or HTTP synchronization transport.
+- Platform-independent sync engine (`@bigmind/sync`) shared by the web PWA and the mobile app; only connectivity, storage, and background-sync triggers are platform-specific.
+- Configurable fake or HTTP synchronization transport (HTTP works on the web and on Hermes).
 - Local outbox for note, category, and link create/update/delete operations.
 - Coalescing of pending operations to avoid unnecessary sync traffic.
 - Push/pull synchronization with a server-side sequence cursor.
 - Optimistic version checks and conflict detection.
 - Retry metadata and exponential backoff for retryable failures.
-- Automatic background sync with a manual fallback action and visible `Saved locally`, `Syncing`, `Synced`, `Offline`, `Sync error`, and `Conflict` states.
+- Automatic background sync with a manual fallback action and visible `Saved locally`, `Syncing`, `Synced`, `Offline`, `Sync error`, and `Conflict` states. Web triggers: timers, visibility, online events. Mobile triggers: AppState + NetInfo (active on sign-in; the initial pull loads server data into the local adapter). The API's `WorkspaceGuard` requires `X-Workspace-Id`, which the mobile app resolves automatically by selecting the user's first workspace (see `apps/mobile/src/features/workspaces/ensure-workspace.ts`).
 
 ### Conflict management
 
@@ -99,12 +100,12 @@ See [LICENSE](LICENSE) for the full license text.
 
 BigMind uses a four-state authentication model to support offline-first usage:
 
-| State | Meaning | Sync | UI Behavior |
-|-------|---------|------|-------------|
-| `authenticated` | Valid tokens, online | Active | Normal |
-| `offline_authenticated` | Valid stored tokens but offline | Paused (offline) | Normal, shows "Offline" sync status |
-| `auth_required` | Tokens expired or revoked, possible to be offline | Paused | Shows banner: "Authentication required", local data fully accessible |
-| `unauthenticated` | No tokens stored | Inactive | Redirect to login |
+| State                   | Meaning                                           | Sync             | UI Behavior                                                          |
+| ----------------------- | ------------------------------------------------- | ---------------- | -------------------------------------------------------------------- |
+| `authenticated`         | Valid tokens, online                              | Active           | Normal                                                               |
+| `offline_authenticated` | Valid stored tokens but offline                   | Paused (offline) | Normal, shows "Offline" sync status                                  |
+| `auth_required`         | Tokens expired or revoked, possible to be offline | Paused           | Shows banner: "Authentication required", local data fully accessible |
+| `unauthenticated`       | No tokens stored                                  | Inactive         | Redirect to login                                                    |
 
 - Network failures during token refresh preserve all tokens and local data (transition to `offline_authenticated`).
 - Authentication failures (expired/revoked refresh token) transition to `auth_required` and preserve local data and outbox.
@@ -118,10 +119,10 @@ Workspaces are the primary ownership model for BigMind. Data is scoped to a work
 
 **Tables:**
 
-| Table | Columns | Purpose |
-|-------|---------|---------|
-| `workspaces` | `id`, `name`, `description`, `created_at`, `updated_at` | A shared space for notes and categories |
-| `workspace_members` | `workspace_id`, `user_id`, `role`, `created_at` | Maps users to workspaces with a role |
+| Table               | Columns                                                 | Purpose                                 |
+| ------------------- | ------------------------------------------------------- | --------------------------------------- |
+| `workspaces`        | `id`, `name`, `description`, `created_at`, `updated_at` | A shared space for notes and categories |
+| `workspace_members` | `workspace_id`, `user_id`, `role`, `created_at`         | Maps users to workspaces with a role    |
 
 **Roles:** `OWNER`, `EDITOR`, `VIEWER` (stored as a PostgreSQL enum `workspace_role`).
 
@@ -142,43 +143,43 @@ Workspaces are the primary ownership model for BigMind. Data is scoped to a work
 
 **Workspace invitations:**
 
-| Table | Columns | Purpose |
-|-------|---------|---------|
+| Table                   | Columns                                                                                   | Purpose                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------- |
 | `workspace_invitations` | `id`, `workspace_id`, `email`, `role`, `token`, `expires_at`, `accepted_at`, `created_at` | Tracks pending and accepted invitations |
 
 Invitation endpoints (all JWT-protected except `getInvitation`):
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/workspaces/:workspaceId/invitations` | Create an invitation (OWNER only). Body: `{ email, role }` where role is `EDITOR` or `VIEWER`. Returns the invitation with a unique token. |
-| `GET` | `/workspaces/:workspaceId/invitations` | List all invitations for a workspace (OWNER only). |
-| `DELETE` | `/workspaces/:workspaceId/invitations/:invitationId` | Revoke an invitation (OWNER only). |
-| `GET` | `/workspace-invitations/:token` | Get invitation details by token (anyone, used for invitation preview). |
-| `POST` | `/workspace-invitations/accept` | Accept an invitation. Body: `{ token }`. The authenticated user's email must match the invitation email. Transactionally creates a membership and marks the invitation as accepted. |
+| Method   | Path                                                 | Description                                                                                                                                                                         |
+| -------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/workspaces/:workspaceId/invitations`               | Create an invitation (OWNER only). Body: `{ email, role }` where role is `EDITOR` or `VIEWER`. Returns the invitation with a unique token.                                          |
+| `GET`    | `/workspaces/:workspaceId/invitations`               | List all invitations for a workspace (OWNER only).                                                                                                                                  |
+| `DELETE` | `/workspaces/:workspaceId/invitations/:invitationId` | Revoke an invitation (OWNER only).                                                                                                                                                  |
+| `GET`    | `/workspace-invitations/:token`                      | Get invitation details by token (anyone, used for invitation preview).                                                                                                              |
+| `POST`   | `/workspace-invitations/accept`                      | Accept an invitation. Body: `{ token }`. The authenticated user's email must match the invitation email. Transactionally creates a membership and marks the invitation as accepted. |
 
 **Member management endpoints:**
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/workspaces/:workspaceId/members` | List all members (any member can view). Returns `userId`, `email`, `role`, `joinedAt`. |
-| `PATCH` | `/workspaces/:workspaceId/members/:userId` | Change a member's role (OWNER only). Body: `{ role }`. Prevents demoting the last OWNER. |
-| `DELETE` | `/workspaces/:workspaceId/members/:userId` | Remove a member (OWNER only). Prevents removing the last OWNER. |
-| `PATCH` | `/workspaces/:workspaceId/rename` | Rename a workspace (OWNER only). Body: `{ name }`. |
-| `DELETE` | `/workspaces/:workspaceId` | Delete a workspace (OWNER only, personal WS cannot be deleted, must have no other members). |
+| Method   | Path                                       | Description                                                                                 |
+| -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `GET`    | `/workspaces/:workspaceId/members`         | List all members (any member can view). Returns `userId`, `email`, `role`, `joinedAt`.      |
+| `PATCH`  | `/workspaces/:workspaceId/members/:userId` | Change a member's role (OWNER only). Body: `{ role }`. Prevents demoting the last OWNER.    |
+| `DELETE` | `/workspaces/:workspaceId/members/:userId` | Remove a member (OWNER only). Prevents removing the last OWNER.                             |
+| `PATCH`  | `/workspaces/:workspaceId/rename`          | Rename a workspace (OWNER only). Body: `{ name }`.                                          |
+| `DELETE` | `/workspaces/:workspaceId`                 | Delete a workspace (OWNER only, personal WS cannot be deleted, must have no other members). |
 
 **Role permissions:**
 
-| Action | OWNER | EDITOR | VIEWER |
-|--------|-------|--------|--------|
-| View notes | ✅ | ✅ | ✅ |
-| Create/edit notes | ✅ | ✅ | ❌ |
-| View workspace members | ✅ | ✅ | ✅ |
-| Invite users | ✅ | ❌ | ❌ |
-| Change member role | ✅ | ❌ | ❌ |
-| Remove member | ✅ | ❌ | ❌ |
-| Rename workspace | ✅ | ❌ | ❌ |
-| Delete workspace | ✅ | ❌ | ❌ |
-| Revoke invitation | ✅ | ❌ | ❌ |
+| Action                 | OWNER | EDITOR | VIEWER |
+| ---------------------- | ----- | ------ | ------ |
+| View notes             | ✅    | ✅     | ✅     |
+| Create/edit notes      | ✅    | ✅     | ❌     |
+| View workspace members | ✅    | ✅     | ✅     |
+| Invite users           | ✅    | ❌     | ❌     |
+| Change member role     | ✅    | ❌     | ❌     |
+| Remove member          | ✅    | ❌     | ❌     |
+| Rename workspace       | ✅    | ❌     | ❌     |
+| Delete workspace       | ✅    | ❌     | ❌     |
+| Revoke invitation      | ✅    | ❌     | ❌     |
 
 Owners cannot remove or demote themselves if they are the last OWNER of the workspace.
 
@@ -287,6 +288,7 @@ Your selection is persisted in `localStorage`, so the same workspace is active o
 Navigate to `/settings` to manage your workspace.
 
 **About tab:**
+
 - Shows workspace name, description, and your role.
 - OWNERs can rename the workspace inline. The workspace ID and all data (notes, categories, links) remain unchanged.
 - OWNERs can delete the workspace. A confirmation dialog requires typing `DELETE`. Personal workspaces and workspaces with other members cannot be deleted.
@@ -301,6 +303,7 @@ Notes can be moved or copied to another workspace from the note detail page:
 - VIEWERs cannot move or copy notes.
 
 **Members tab:**
+
 - Lists all members with their email, role, and join date.
 - Only OWNERS can change a member's role (Owner → Editor → Viewer) or remove a member.
 - A confirmation dialog appears when removing a member or demoting an Owner.
@@ -308,6 +311,7 @@ Notes can be moved or copied to another workspace from the note detail page:
 - Non-owners see the member list but cannot modify it.
 
 **Invitations tab:**
+
 - Only OWNERS can invite new users by email.
 - Pending and accepted invitations are displayed separately.
 - Pending invitations can be revoked by the Owner.
@@ -340,9 +344,9 @@ The sidebar reports `Saved locally`, `Syncing`, `Synced`, `Offline`, `Login requ
 
 The sync engine detects authentication failures separately from transport failures:
 
-| Failure Type | Examples | Engine Behavior |
-|-------------|----------|-----------------|
-| Transport | off-line, timeout, DNS failure, 500 | Exponential backoff retry, status: `error` / `offline` |
+| Failure Type   | Examples                                         | Engine Behavior                                                                              |
+| -------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Transport      | off-line, timeout, DNS failure, 500              | Exponential backoff retry, status: `error` / `offline`                                       |
 | Authentication | expired refresh token, revoked token, logged out | Stop sync immediately, status: `auth_required` ("Login required"), preserve outbox, no retry |
 
 - On authentication failure, pending outbox operations are marked as failed (non-retryable) and preserved locally.
@@ -355,28 +359,36 @@ Deleting a note removes its outgoing links and backlinks locally and queues the 
 
 - **Workspace:** Nx, pnpm, TypeScript
 - **Web:** React, Vite, TanStack Router, Tailwind CSS, Milkdown Crepe
-- **Local persistence:** Dexie and IndexedDB
+- **Mobile:** Expo / React Native, React Navigation (bottom tabs + native stack), Expo SecureStore (tokens), jest-expo
+- **Local persistence:** Dexie and IndexedDB behind the shared `StorageAdapter` abstraction (web), in-memory placeholder + planned `SqliteStorageAdapter` (mobile)
 - **PWA:** Vite PWA and Workbox
 - **API:** NestJS and ts-rest
 - **Database:** PostgreSQL and Drizzle ORM
 - **Validation:** Zod
-- **Testing:** Vitest, Jest, and Playwright tooling
+- **Testing:** Vitest, Jest (incl. jest-expo), and Playwright tooling
 
 ## Workspace structure
 
 ```text
 apps/
   web/          React local-first PWA
+  mobile/       Expo / React Native app (Android-first)
   api/          NestJS synchronization API
   web-e2e/      Playwright end-to-end project
 libs/
   contracts/    Zod schemas and ts-rest API contracts
   domain/       Shared note types and pure business rules
+  sync/         Shared sync engine, transports, and platform abstractions
+  storage/      Local records + the StorageAdapter abstraction
+  auth/         Shared AuthStore state machine (token refresh, offline auth)
+  features/     Shared repositories (notes, categories, links, todos)
+  markdown/     Shared Markdown parsing, HTML rendering, wiki-link
+                 extraction/normalization, note preview, formatting helpers
 docker/
   postgres/     PostgreSQL development initialization
 ```
 
-Nx module-boundary rules keep the domain independent from applications and platform-specific infrastructure.
+Nx module-boundary rules keep the domain independent from applications and platform-specific infrastructure. The shared libraries (`contracts`, `domain`, `sync`, `storage`, `auth`, `features`, `markdown`) are consumed by both the web app and the mobile app. On the web, all persistence goes through the `StorageAdapter` contract (implemented by `DexieStorageAdapter`); the mobile placeholder uses the shared in-memory adapter until the expo-sqlite `SqliteStorageAdapter` lands.
 
 ## Development setup
 
@@ -471,6 +483,47 @@ Then start only the web project:
 pnpm exec nx serve @bigmind/web
 ```
 
+## Mobile development
+
+Prerequisites: the Android emulator/device or Expo Go, and the shared libraries built (Metro resolves `@bigmind/*` from `dist/`):
+
+```bash
+# Build the shared libraries once (or let mobile:build depend on them)
+pnpm exec nx run-many -t build -p @bigmind/domain @bigmind/contracts @bigmind/auth @bigmind/sync @bigmind/storage
+
+# Start the Expo dev server
+pnpm exec nx serve @bigmind/mobile
+
+# Run on an Android emulator/device
+pnpm exec nx run @bigmind/mobile:run-android
+
+# Validate the Android JS bundle without a device (CI-safe build)
+pnpm exec nx run @bigmind/mobile:build
+```
+
+By default the app targets `http://10.0.2.2:3000` on Android (the host's localhost from the emulator). Override with `EXPO_PUBLIC_API_URL` in the mobile environment. See [Mobile Architecture](docs/mobile-architecture.md) for details.
+
+### Physical phone on the same Wi-Fi
+
+The API already listens on all interfaces (`app.listen(port)` binds `0.0.0.0`), so it is reachable through the PC's LAN IP (e.g. `192.168.4.27`). To point the app at it:
+
+1. Create `apps/mobile/.env` (gitignored) with the PC's LAN IP:
+   ```dotenv
+   EXPO_PUBLIC_API_URL=http://192.168.4.27:3000
+   ```
+2. Restart the Expo dev server (Expo inlines `EXPO_PUBLIC_*` at bundle time) and open the app on the phone via Expo Go.
+3. Keep the phone on the **same network** as the PC (no client/AP isolation) and make sure the PC firewall allows inbound TCP on port `3000` (macOS firewall off by default).
+
+Smoke-check the endpoint from the PC before opening the app:
+
+```bash
+curl -w '%{http_code}\n' http://192.168.4.27:3000/health   # 200
+curl -X POST http://192.168.4.27:3000/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"x@y.z","password":"wrong"}' -w '\n%{http_code}\n'             # 401
+```
+
+CORS does not apply to the native app (browser-only); add the LAN origin to `CORS_ORIGINS` only if you also serve the web app from the phone's browser.
+
 ## Design System
 
 The BigMind UI follows the **Mindful Utility** design system (blue variant), defined in `apps/web/src/styles.css` via Tailwind v4 `@theme` tokens.
@@ -483,17 +536,18 @@ The BigMind UI follows the **Mindful Utility** design system (blue variant), def
 
 ### Colors
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `blue-600` | `#2563eb` | Primary actions, active nav |
-| `blue-700` | `#004ac6` | Primary hover |
-| `slate-50` | `#f7f9fb` | App canvas / sidebar |
-| `slate-700` | `#191c1e` | Primary text (on-surface) |
-| `slate-400` | `#737686` | Muted text / icons |
+| Token       | Value     | Usage                       |
+| ----------- | --------- | --------------------------- |
+| `blue-600`  | `#2563eb` | Primary actions, active nav |
+| `blue-700`  | `#004ac6` | Primary hover               |
+| `slate-50`  | `#f7f9fb` | App canvas / sidebar        |
+| `slate-700` | `#191c1e` | Primary text (on-surface)   |
+| `slate-400` | `#737686` | Muted text / icons          |
 
 ### Typography
 
 **Inter** is the sole typeface, loaded via Google Fonts. Hierarchy uses weight control:
+
 - Displays/headlines: `700`–`800`
 - Body: `400` with generous line height
 - Labels/metadata: `600` with letter-spacing (uppercase section headers in the sidebar)
@@ -528,23 +582,47 @@ for (const size of s) sharp('apps/web/public/source-icon.png').resize(size,size)
 
 Screenshots for the install dialog go in `apps/web/public/screenshots/` (1080x1920 PNG).
 
+### Mobile app (Expo / React Native)
+
+An Android-first React Native app lives in `apps/mobile` (Expo SDK 55, iOS-compatible). It reuses the same shared libraries as the web PWA: domain models (`@bigmind/domain`), zod-validated contracts (`@bigmind/contracts`), the sync protocol (`@bigmind/sync`), the storage abstraction (`@bigmind/storage`), and the auth state machine (`@bigmind/auth`).
+
+#### Mobile authentication (login / register)
+
+While signed out the app shows a native-stack `AuthNavigator` with **Login** and **Register** screens; once authenticated the `RootGate` swaps to the main bottom tabs (`apps/mobile/src/app/App.tsx`).
+
+- Both screens reuse the **shared ts-rest zod contracts** for validation and response handling (`loginRequestSchema`, `registerRequestSchema`, `authResponseSchema`, `errorResponseSchema` — see `apps/mobile/src/features/auth/auth-api.ts`). Request and response shapes are validated on-device before any token is stored.
+- Tokens (access, refresh, user) are persisted in **Expo SecureStore** (Keychain on iOS, encrypted storage on Android) through the shared `AuthStore` — **AsyncStorage is never used for tokens** (it remains only for non-sensitive preferences such as the selected workspace).
+- The four-state offline auth model, periodic token refresh, and 401-retry behavior are the exact same logic the web app uses (`@bigmind/auth`).
+- Registration signs the user in immediately (the API returns a token pair). Logout (Settings → Log out) clears SecureStore tokens and returns to the login screen.
+- Point the app at a running API with `EXPO_PUBLIC_API_URL` (defaults to `http://10.0.2.2:3000` on the Android emulator).
+
+#### Notes & Categories (mobile)
+
+The Notes and Categories tabs are native stacks (`apps/mobile/src/navigation/NotesNavigator.tsx`, `CategoriesNavigator.tsx`): a list screen pushing a detail screen with native transitions.
+
+- **Notes** — `NotesListScreen` (recent-first list with plain-text previews and category chips) → `NoteDetailScreen` (native **Markdown editor** — see below — with category picker, backlinks/outgoing links, and delete). New notes are created from a floating action button.
+- **Markdown editing (Option B, shipped)** — the detail screen embeds `MarkdownEditView` (`apps/mobile/src/components/`): raw multiline `TextInput`, formatting toolbar (bold/italic/code/heading/link as pure string transforms), `[[` wiki-link suggestions from the shared ranking helper, and an edit ⇄ **preview** toggle rendered by the shared `@bigmind/markdown` tokenizer (`MarkdownText`). `TODO_LIST` notes switch to a native `TodoListView` over the shared `TodoRepository`. See the [Mobile Editor Evaluation](docs/mobile-editor.md) — Fases 1–2 shipped.
+- **Categories** — `CategoriesListScreen` (tree view built with `buildCategoryTree` from the shared domain) → `CategoryDetailScreen` (rename, icon, add subcategories, delete with the shared guards, and the list of notes in the category — tapping one jumps to the note detail).
+- All editing goes through the **shared repositories** (`@bigmind/features`): `NoteRepository`, `CategoryRepository`, `LinkRepository`, and `TodoRepository` are the exact same classes the web app uses, backed by the mobile `StorageAdapter` (in-memory placeholder). Outbox coalescing, title/category normalization, cycle and delete guards, and wiki-link maintenance are therefore shared — nothing is reimplemented on mobile.
+- Shared contracts are reused on-device too: the note editor validates the assembled record with `noteDataSchema` before saving; todo items sync through `todoItemDataSchema`.
+
 ## Reminders & Agenda
 
 Reminders are a first-class domain feature for tracking tasks with due dates. They work completely offline and synchronize through the existing sync engine.
 
 ### Reminder model
 
-| Field | Description |
-|-------|-------------|
-| `id` | UUID |
-| `workspaceId` | Workspace scope |
-| `title` | Required, max 200 characters |
-| `description` | Optional Markdown text |
-| `dueAt` | ISO datetime |
-| `completed` | Boolean toggle |
-| `createdBy` | User ID |
-| `linkedNoteId` | Optional linked note |
-| `version` | Optimistic concurrency version |
+| Field          | Description                    |
+| -------------- | ------------------------------ |
+| `id`           | UUID                           |
+| `workspaceId`  | Workspace scope                |
+| `title`        | Required, max 200 characters   |
+| `description`  | Optional Markdown text         |
+| `dueAt`        | ISO datetime                   |
+| `completed`    | Boolean toggle                 |
+| `createdBy`    | User ID                        |
+| `linkedNoteId` | Optional linked note           |
+| `version`      | Optimistic concurrency version |
 
 ### Agenda view (`/agenda`)
 
@@ -556,6 +634,7 @@ The Agenda page groups reminders into four sections:
 - **Completed** — finished reminders
 
 Each section is sorted by `dueAt` ascending. From the agenda you can:
+
 - **Complete** a reminder (toggle)
 - **Edit** title and due date inline
 - **Delete** a reminder
@@ -574,12 +653,12 @@ Reminders follow the same offline-first pattern as notes:
 
 ### API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/reminders` | List reminders (workspace-scoped) |
-| `POST` | `/reminders` | Create a reminder |
-| `PATCH` | `/reminders/:id` | Update a reminder |
-| `DELETE` | `/reminders/:id` | Delete a reminder |
+| Method   | Path             | Description                       |
+| -------- | ---------------- | --------------------------------- |
+| `GET`    | `/reminders`     | List reminders (workspace-scoped) |
+| `POST`   | `/reminders`     | Create a reminder                 |
+| `PATCH`  | `/reminders/:id` | Update a reminder                 |
+| `DELETE` | `/reminders/:id` | Delete a reminder                 |
 
 ## Notifications
 
@@ -587,15 +666,15 @@ BigMind has a notification infrastructure ready for future push delivery. Notifi
 
 ### Notification model
 
-| Field | Description |
-|-------|-------------|
-| `id` | UUID |
-| `workspaceId` | Workspace scope |
-| `type` | `reminder_due`, `note_modified`, `workspace_invitation` |
-| `title` | Required, max 200 characters |
-| `body` | Optional text |
-| `read` | Read/unread flag |
-| `createdAt` | ISO timestamp |
+| Field         | Description                                             |
+| ------------- | ------------------------------------------------------- |
+| `id`          | UUID                                                    |
+| `workspaceId` | Workspace scope                                         |
+| `type`        | `reminder_due`, `note_modified`, `workspace_invitation` |
+| `title`       | Required, max 200 characters                            |
+| `body`        | Optional text                                           |
+| `read`        | Read/unread flag                                        |
+| `createdAt`   | ISO timestamp                                           |
 
 ### Notification Center
 
@@ -613,30 +692,31 @@ A bell icon in the sidebar footer shows a badge with the unread count. Opening i
 
 ### API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/notifications` | List notifications (workspace-scoped) |
-| `POST` | `/notifications` | Create a notification |
-| `POST` | `/notifications/read-all` | Mark all as read |
-| `POST` | `/notifications/:id/read` | Mark one as read |
-| `DELETE` | `/notifications/:id` | Delete a notification |
+| Method   | Path                      | Description                           |
+| -------- | ------------------------- | ------------------------------------- |
+| `GET`    | `/notifications`          | List notifications (workspace-scoped) |
+| `POST`   | `/notifications`          | Create a notification                 |
+| `POST`   | `/notifications/read-all` | Mark all as read                      |
+| `POST`   | `/notifications/:id/read` | Mark one as read                      |
+| `DELETE` | `/notifications/:id`      | Delete a notification                 |
 
 ## Performance
 
 BigMind uses lazy loading and route-level code splitting to minimize initial load time:
 
-| Component | Strategy | Initial Load Impact |
-|-----------|----------|---------------------|
-| **MarkdownEditor** (Milkdown Crepe) | `React.lazy` + `Suspense` | ~1.1 MB deferred until a Markdown note is opened |
-| **TodoEditor** | `React.lazy` + `Suspense` | Deferred until a Todo List note is opened |
-| **Routes** (`/notes`, `/settings`, `/conflicts`, `/categories`) | TanStack Router `autoCodeSplitting` | Each route is a separate chunk |
+| Component                                                       | Strategy                            | Initial Load Impact                              |
+| --------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
+| **MarkdownEditor** (Milkdown Crepe)                             | `React.lazy` + `Suspense`           | ~1.1 MB deferred until a Markdown note is opened |
+| **TodoEditor**                                                  | `React.lazy` + `Suspense`           | Deferred until a Todo List note is opened        |
+| **Routes** (`/notes`, `/settings`, `/conflicts`, `/categories`) | TanStack Router `autoCodeSplitting` | Each route is a separate chunk                   |
 
 **Bundle breakdown** (production build):
-| Asset | Size (gzipped) | Content |
-|-------|---------------|---------|
-| `index-*.js` | 132 KB | App shell: auth, sidebar, routing, home page |
-| `markdown-editor-*.js` | 357 KB | Milkdown Crepe editor (lazy loaded) |
-| Other chunks | ~150 KB | Shared code, database, sync engine, todo editor |
+
+| Asset                  | Size (gzipped) | Content                                         |
+| ---------------------- | -------------- | ----------------------------------------------- |
+| `index-*.js`           | 132 KB         | App shell: auth, sidebar, routing, home page    |
+| `markdown-editor-*.js` | 357 KB         | Milkdown Crepe editor (lazy loaded)             |
+| Other chunks           | ~150 KB        | Shared code, database, sync engine, todo editor |
 
 - **Initial JS**: ~132 KB gzipped (vs ~639 KB before optimizations — 79% reduction)
 - **Subsequent loads**: All assets served from Workbox cache (instant)
@@ -649,6 +729,8 @@ For detailed guides and reference documentation, see:
 - [Permissions & Role Matrix](docs/permissions.md): Access control rules, role definitions (OWNER, EDITOR, VIEWER), and last-owner protection rules.
 - [Workspace Management Guide](docs/workspace-management.md): Guide for workspace settings, member management, role assignments, and removals.
 - [Architecture Overview](docs/architecture.md): Technical architecture of BigMind.
+- [Mobile Architecture](docs/mobile-architecture.md): React Native app structure, shared-layer breakdown, storage abstraction, and platform deltas.
+- [Mobile Editor Evaluation](docs/mobile-editor.md): Technical evaluation of mobile note-editing options and the recommended architecture (Markdown editor + shared renderer).
 - [Database Schema](docs/database-schema.md): Database schema and Drizzle ORM layout.
 - [Template System](docs/template-system.md): Note template types, how they work, and how to add new templates.
 - [Deploy on Debian](docs/deploy-debian.md): Production deployment on a modest home server (PostgreSQL native + systemd + Caddy), with tuning for low-power hardware.
@@ -656,11 +738,13 @@ For detailed guides and reference documentation, see:
 ### Template System
 
 Notes support two template types:
+
 - **MARKDOWN** — Full Markdown editing with Milkdown Crepe (default for all notes).
 - **TODO_LIST** — Task list with ordered items, completion toggling, drag-and-drop reordering, a "Show Completed" toggle (persisted in localStorage), and keyboard shortcuts (Enter to create below, Backspace on empty to delete). Counters (Remaining/Completed) always reflect the full list.
 - Todo items are synchronized as independent entities through the outbox-based sync engine, with offline creation, editing, deletion, and conflict detection at the individual item level.
 
 When creating a note, a template selector popup appears next to the + button. The `templateType` field is:
+
 - Stored in the `template_type` PostgreSQL column and the IndexedDB `NoteRecord`.
 - Included in all sync payloads as `templateType` with a default of `MARKDOWN` for backward compatibility.
 - Validated through the `TEMPLATE_TYPES` constant array in `@bigmind/domain/notes`.
@@ -670,16 +754,17 @@ When creating a note, a template selector popup appears next to the + button. Th
 
 Notes with `templateType: TODO_LIST` expose the following endpoints for managing todo items:
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| `GET` | `/notes/:noteId/todos` | List all todo items (ordered by position) | Any member |
-| `POST` | `/notes/:noteId/todos` | Create a new todo item | EDITOR+ |
-| `PATCH` | `/notes/:noteId/todos/:itemId` | Update item text | EDITOR+ |
-| `PUT` | `/notes/:noteId/todos/:itemId/toggle` | Toggle completion | EDITOR+ |
-| `DELETE` | `/notes/:noteId/todos/:itemId` | Delete an item | EDITOR+ |
-| `PUT` | `/notes/:noteId/todos/:itemId/reorder` | Reorder item (`body: { position }`) | EDITOR+ |
+| Method   | Path                                   | Description                               | Auth       |
+| -------- | -------------------------------------- | ----------------------------------------- | ---------- |
+| `GET`    | `/notes/:noteId/todos`                 | List all todo items (ordered by position) | Any member |
+| `POST`   | `/notes/:noteId/todos`                 | Create a new todo item                    | EDITOR+    |
+| `PATCH`  | `/notes/:noteId/todos/:itemId`         | Update item text                          | EDITOR+    |
+| `PUT`    | `/notes/:noteId/todos/:itemId/toggle`  | Toggle completion                         | EDITOR+    |
+| `DELETE` | `/notes/:noteId/todos/:itemId`         | Delete an item                            | EDITOR+    |
+| `PUT`    | `/notes/:noteId/todos/:itemId/reorder` | Reorder item (`body: { position }`)       | EDITOR+    |
 
 **Domain model:**
+
 - `TodoList` — belongs to a Note (one per TODO_LIST note), created automatically on first item.
 - `TodoItem` — belongs to a TodoList, has `text`, `completed` (boolean), `position` (integer).
 - Items are always returned ordered by position.
@@ -687,6 +772,7 @@ Notes with `templateType: TODO_LIST` expose the following endpoints for managing
 - VIEWERs can list items but cannot create, update, toggle, delete, or reorder.
 
 **Keyboard shortcuts:**
+
 - `Enter` while editing an item: saves and moves focus to the next item (or the "Add" input if at the end).
 - `Backspace` on an empty editing input: deletes the item and focuses the previous item.
 - `Escape`: cancels editing.
@@ -712,6 +798,9 @@ pnpm exec nx run-many -t typecheck
 # Build all current applications and libraries
 pnpm exec nx run-many -t build
 
+# Export the Android JS bundle (Metro) for the mobile app
+pnpm exec nx run @bigmind/mobile:build
+
 # Build only projects affected by the current changes
 pnpm build:affected
 
@@ -722,3 +811,5 @@ pnpm exec nx graph
 ## Current scope
 
 BigMind currently focuses on notes, hierarchical categories, wiki links/backlinks, full-text search, local-first synchronization, a user-facing conflict resolution workflow, JWT authentication with workspace-based data isolation, workspace member management (roles, members list, demotion/removal guards), and automatic token refresh. Sharing, end-to-end encryption, drag-and-drop category ordering, descendant-inclusive filters, graph visualization, alias synchronization between devices, fully automatic merge, three-way merge, and multi-workspace switching are not implemented yet.
+
+The **mobile app** currently provides the application shell (React Navigation tabs: Home, Notes, Categories, Reminders, Settings), a full **login/register auth flow** (shared zod-validated contracts, tokens in Expo SecureStore), the **notes and categories experience** (lists and detail screens driven by the shared `@bigmind/features` repositories), shared-library wiring (domain rules, zod contracts, auth state machine, storage adapter placeholder), the **native Markdown editor** (Option B: `MarkdownEditView` + shared `@bigmind/markdown` preview — see [docs/mobile-editor.md](docs/mobile-editor.md)), and the **shared sync engine active on sign-in** (`SyncActivator`: initial pull + AppState/NetInfo background sync, see `apps/mobile/src/sync/`), plus a CI-safe Android bundle build. Persistence still uses the in-memory adapter; SQLite persistence, reminders UI, and notifications on Android are the next milestones.

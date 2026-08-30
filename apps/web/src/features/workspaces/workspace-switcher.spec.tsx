@@ -3,10 +3,18 @@
 import 'fake-indexeddb/auto';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 
 const mockFetch = vi.hoisted(() => vi.fn<() => Promise<any>>());
-const mockCreateWorkspace = vi.hoisted(() => vi.fn<(_data: any) => Promise<any>>());
+const mockCreateWorkspace = vi.hoisted(() =>
+  vi.fn<(_data: any) => Promise<any>>(),
+);
 const mockGetStored = vi.hoisted(() => vi.fn<() => string | null>());
 const mockSetStored = vi.hoisted(() => vi.fn<(_id: string) => void>());
 const mockNavigate = vi.hoisted(() => vi.fn());
@@ -26,7 +34,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import { db } from '../../storage/database';
+import { storage } from '../../storage';
 import { WorkspaceProvider } from './workspace-context';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
@@ -41,14 +49,14 @@ beforeEach(async () => {
   ]);
   mockGetStored.mockReturnValue('ws-1');
   localStorage.clear();
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
   cleanup();
   vi.clearAllMocks();
-  await db.delete();
+  await storage.delete();
 });
 
 describe('WorkspaceSwitcher', () => {
@@ -169,7 +177,10 @@ describe('WorkspaceSwitcher', () => {
         description: 'Alpha workspace description',
       });
       expect(mockSetStored).toHaveBeenCalledWith('ws-new');
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/', search: { category: undefined } });
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: '/',
+        search: { category: undefined },
+      });
     });
   });
 });

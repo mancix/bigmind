@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Crepe } from '@milkdown/crepe';
+import { normalizeWikiLinkMarkdown, rankTitles } from '@bigmind/markdown';
 
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
@@ -43,7 +44,7 @@ export function MarkdownEditor({
   selectedIndexRef.current = selectedIndex;
 
   const visibleSuggestions = useMemo(
-    () => rankNotes(noteSuggestions, trigger?.query ?? '').slice(0, 8),
+    () => rankTitles(noteSuggestions, trigger?.query ?? '').slice(0, 8),
     [noteSuggestions, trigger?.query],
   );
 
@@ -77,11 +78,13 @@ export function MarkdownEditor({
       range.collapse(true);
       selection?.removeAllRanges();
       selection?.addRange(range);
-      current.block.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        inputType: 'insertText',
-        data: text,
-      }));
+      current.block.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertText',
+          data: text,
+        }),
+      );
     }
     closeSuggestions();
   }
@@ -142,12 +145,14 @@ export function MarkdownEditor({
       }
 
       const anchorNode = hasUsableSelection ? selection?.anchorNode : undefined;
-      const parent = anchorNode?.nodeType === Node.ELEMENT_NODE
-        ? anchorNode as Element
-        : anchorNode?.parentElement;
-      let block = parent?.closest<HTMLElement>(
-        'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre',
-      ) ?? fallbackBlock;
+      const parent =
+        anchorNode?.nodeType === Node.ELEMENT_NODE
+          ? (anchorNode as Element)
+          : anchorNode?.parentElement;
+      let block =
+        parent?.closest<HTMLElement>(
+          'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre',
+        ) ?? fallbackBlock;
       if (!block) return;
 
       let text = block.textContent ?? '';
@@ -187,12 +192,18 @@ export function MarkdownEditor({
     }
 
     function handleKeyDown(event: globalThis.KeyboardEvent) {
-      if (!(event.target instanceof Node) || !editorContainer.contains(event.target)) {
+      if (
+        !(event.target instanceof Node) ||
+        !editorContainer.contains(event.target)
+      ) {
         return;
       }
       const current = triggerRef.current;
       if (!current) return;
-      const notes = rankNotes(suggestionsRef.current, current.query).slice(0, 8);
+      const notes = rankTitles(suggestionsRef.current, current.query).slice(
+        0,
+        8,
+      );
 
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -247,10 +258,7 @@ export function MarkdownEditor({
 
   return (
     <div ref={wrapperRef} className="relative">
-      <div
-        ref={containerRef}
-        className="bigmind-editor min-h-[60vh]"
-      />
+      <div ref={containerRef} className="bigmind-editor min-h-[60vh]" />
 
       {trigger && visibleSuggestions.length > 0 && (
         <div
@@ -284,35 +292,6 @@ export function MarkdownEditor({
   );
 }
 
-function rankNotes<T extends { title: string }>(notes: T[], query: string): T[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  return notes
-    .map((note, index) => ({
-      note,
-      index,
-      score: fuzzyScore(note.title.toLocaleLowerCase(), normalizedQuery),
-    }))
-    .filter(({ score }) => score >= 0)
-    .sort((left, right) => left.score - right.score || left.index - right.index)
-    .map(({ note }) => note);
-}
-
-function fuzzyScore(value: string, query: string): number {
-  if (!query) return 0;
-  const exactIndex = value.indexOf(query);
-  if (exactIndex >= 0) return exactIndex;
-
-  let queryIndex = 0;
-  let gapScore = value.length;
-  for (let index = 0; index < value.length && queryIndex < query.length; index++) {
-    if (value[index] === query[queryIndex]) {
-      gapScore += index;
-      queryIndex += 1;
-    }
-  }
-  return queryIndex === query.length ? gapScore : -1;
-}
-
 function positionAtTextOffset(
   root: HTMLElement,
   targetOffset: number,
@@ -328,11 +307,4 @@ function positionAtTextOffset(
   }
 
   return undefined;
-}
-
-function normalizeWikiLinkMarkdown(markdown: string): string {
-  return markdown.replace(
-    /\\?\[\\?\[([^\]\n]*?)\\?\]\\?\]/g,
-    '[[$1]]',
-  );
 }

@@ -1,34 +1,22 @@
 import type { NoteAlias } from './note-link.js';
+import { normalizeWikiLinkName } from '@bigmind/markdown';
 
-const WIKI_LINK_PATTERN = /\\?\[\\?\[([^[\]\n]+?)\\?\]\\?\]/g;
+// Canonical implementations now live in `@bigmind/markdown` (single source
+// shared by web and mobile); these re-exports keep the domain API stable.
+export { extractWikiLinks, normalizeWikiLinkName } from '@bigmind/markdown';
 
-export function normalizeWikiLinkName(value: string): string {
-  return value.trim().toLocaleLowerCase();
-}
-
-export function extractWikiLinks(markdown: string): string[] {
-  const links: string[] = [];
-  const seen = new Set<string>();
-
-  for (const match of markdown.matchAll(WIKI_LINK_PATTERN)) {
-    const canonicalTitle = match[1]?.split('|', 1)[0]?.trim();
-    if (!canonicalTitle) continue;
-
-    const normalized = normalizeWikiLinkName(canonicalTitle);
-    if (seen.has(normalized)) continue;
-
-    seen.add(normalized);
-    links.push(canonicalTitle);
-  }
-
-  return links;
-}
-
-export function resolveWikiLinkTarget<TNote extends {
-  id: string;
-  title: string;
-  deletedAt?: string;
-}>(
+/**
+ * Resolves a wiki-link name to a note by current title, then by alias.
+ * Link *resolution* stays in the domain (it reasons about notes/aliases);
+ * the markdown-level extraction lives in `@bigmind/markdown`.
+ */
+export function resolveWikiLinkTarget<
+  TNote extends {
+    id: string;
+    title: string;
+    deletedAt?: string;
+  },
+>(
   wikiLinkName: string,
   notes: readonly TNote[],
   aliases: readonly Pick<NoteAlias, 'noteId' | 'alias'>[],

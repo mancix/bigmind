@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createFileRoute, Link, notFound, useNavigate } from '@tanstack/react-router';
+import {
+  createFileRoute,
+  Link,
+  notFound,
+  useNavigate,
+} from '@tanstack/react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { createNotePreview } from '@bigmind/domain/notes';
 import { buildCategoryTree } from '@bigmind/domain/categories';
@@ -9,7 +14,7 @@ import { categoryRepository } from '../../features/categories/category-repositor
 import { noteRepository } from '../../features/notes/note-repository';
 import { renderMarkdown } from '../../features/categories/render-markdown';
 import { Icon } from '../../components/icon';
-import { db, type NoteRecord } from '../../storage/database';
+import { storage, type NoteRecord } from '../../storage';
 
 export const Route = createFileRoute('/categories/$categoryId')({
   loader: async ({ params }) => {
@@ -24,15 +29,19 @@ function CategoryPage() {
   const { categoryId } = Route.useLoaderData();
   const navigate = useNavigate();
 
-  const category = useLiveQuery(() => categoryRepository.findById(categoryId), [categoryId]);
+  const category = useLiveQuery(
+    () => categoryRepository.findById(categoryId),
+    [categoryId],
+  );
   const categories = useLiveQuery(() => categoryRepository.list(), []) ?? [];
-  const allNotes = useLiveQuery(() => db.notes.toArray(), []) ?? [];
+  const allNotes = useLiveQuery(() => storage.notes.toArray(), []) ?? [];
 
   const [isEditing, setIsEditing] = useState(false);
   const [editDescription, setEditDescription] = useState('');
 
   const subcategories = useMemo(
-    () => buildCategoryTree(categories).filter((c) => c.parentId === categoryId),
+    () =>
+      buildCategoryTree(categories).filter((c) => c.parentId === categoryId),
     [categories, categoryId],
   );
 
@@ -43,7 +52,9 @@ function CategoryPage() {
   async function handleSaveDescription() {
     if (category) {
       try {
-        await categoryRepository.update(categoryId, { description: editDescription });
+        await categoryRepository.update(categoryId, {
+          description: editDescription,
+        });
         setIsEditing(false);
       } catch {
         // silently handled
@@ -78,7 +89,9 @@ function CategoryPage() {
       {/* Category header */}
       <div className="mb-6 mt-4">
         <div className="mb-3 flex items-center gap-4">
-          {category.icon ? <span className="text-4xl">{category.icon}</span> : null}
+          {category.icon ? (
+            <span className="text-4xl">{category.icon}</span>
+          ) : null}
           <h1 className="text-[32px] font-bold leading-10 tracking-[-0.02em] text-on-surface">
             {category.name}
           </h1>
@@ -100,7 +113,10 @@ function CategoryPage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setEditDescription(category.description); setIsEditing(false); }}
+                onClick={() => {
+                  setEditDescription(category.description);
+                  setIsEditing(false);
+                }}
                 className="rounded-lg px-4 py-2 text-sm font-medium text-on-surface-variant transition hover:bg-surface-high"
               >
                 Cancel
@@ -112,20 +128,30 @@ function CategoryPage() {
             role="button"
             tabIndex={0}
             onClick={() => setIsEditing(true)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsEditing(true); } }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsEditing(true);
+              }
+            }}
             className="cursor-text rounded-lg border border-transparent px-3 py-2 transition hover:border-outline-variant hover:bg-surface-low"
           >
             {category.description ? (
               <div
                 className="prose prose-sm max-w-none text-on-surface-variant prose-headings:text-on-surface prose-a:text-primary"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(category.description) }}
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(category.description),
+                }}
               />
             ) : (
               <span className="text-base italic leading-6 text-on-surface-variant/60">
                 No description yet.{' '}
                 <span
                   className="not-italic font-medium text-primary hover:underline cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
                 >
                   Add description
                 </span>
@@ -166,7 +192,10 @@ function CategoryPage() {
             <div className="relative mb-6 size-40">
               <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-primary-container/5 to-surface-highest opacity-50 blur-3xl" />
               <div className="relative z-10 flex h-full items-center justify-center">
-                <Icon name="note_stack" className="select-none text-7xl text-outline-variant" />
+                <Icon
+                  name="note_stack"
+                  className="select-none text-7xl text-outline-variant"
+                />
               </div>
             </div>
             <p className="mb-2 text-2xl font-semibold leading-8 tracking-[-0.01em] text-on-surface-variant/60">

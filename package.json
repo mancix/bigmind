@@ -76,7 +76,19 @@
     "webpack": "^5.101.3",
     "webpack-cli": "^7.0.0",
     "webpack-dev-server": "^5.2.1",
-    "workbox-window": "^7.4.1"
+    "workbox-window": "^7.4.1",
+    "@babel/runtime": "~7.27.6",
+    "@expo/cli": "~55.0.11",
+    "@jest/globals": "~30.3.0",
+    "@nx/expo": "23.0.1",
+    "@testing-library/react-native": "~13.2.0",
+    "babel-jest": "~30.3.0",
+    "babel-preset-expo": "~55.0.7",
+    "jest-environment-jsdom": "~30.3.0",
+    "jest-expo": "~55.0.18",
+    "metro-config": "~0.83.0",
+    "metro-resolver": "~0.83.0",
+    "react-test-renderer": "19.2.7"
   },
   "dependencies": {
     "@milkdown/crepe": "^7.21.2",

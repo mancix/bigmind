@@ -13,14 +13,12 @@ import {
 } from '@tanstack/react-router';
 
 import type { SearchResult } from '../search/search.types';
-import { db, type CategoryRecord } from '../../storage/database';
+import { storage, type CategoryRecord } from '../../storage';
 import { noteRepository } from '../notes/note-repository';
 import { categoryRepository } from '../categories/category-repository';
 import { CommandPalette } from './command-palette';
 
-const mockSearch = vi.hoisted(
-  () => vi.fn<(query: string) => SearchResult[]>(),
-);
+const mockSearch = vi.hoisted(() => vi.fn<(query: string) => SearchResult[]>());
 
 vi.mock('../search/search-service', () => ({
   searchService: {
@@ -37,6 +35,7 @@ function createCategoryRecord(
   return {
     id,
     name: 'Test category',
+    description: '',
     icon: null,
     parentId: null,
     position: 0,
@@ -93,18 +92,16 @@ function renderPalette(isOpen = true, onClose = vi.fn()) {
 beforeEach(async () => {
   mockSearch.mockReset();
   mockSearch.mockReturnValue([]);
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
   vi.spyOn(noteRepository, 'create').mockResolvedValue('mock-note-id');
-  vi.spyOn(categoryRepository, 'create').mockResolvedValue(
-    'mock-category-id',
-  );
+  vi.spyOn(categoryRepository, 'create').mockResolvedValue('mock-category-id');
 });
 
 afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
-  await db.delete();
+  await storage.delete();
 });
 
 describe('CommandPalette', () => {
@@ -158,7 +155,7 @@ describe('CommandPalette', () => {
   });
 
   it('shows matching categories when query matches', async () => {
-    await db.categories.put(
+    await storage.categories.put(
       createCategoryRecord('cat-1', { name: 'Work notes' }),
     );
 
@@ -215,13 +212,9 @@ describe('CommandPalette', () => {
   it('updates note search when query changes', async () => {
     mockSearch.mockImplementation((q: string) => {
       if (q === 'Al')
-        return [
-          { id: '1', title: 'Alpha', score: 1, preview: 'First' },
-        ];
+        return [{ id: '1', title: 'Alpha', score: 1, preview: 'First' }];
       if (q === 'Be')
-        return [
-          { id: '2', title: 'Beta', score: 1, preview: 'Second' },
-        ];
+        return [{ id: '2', title: 'Beta', score: 1, preview: 'Second' }];
       return [];
     });
     renderPalette(true);

@@ -4,24 +4,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Dexie from 'dexie';
 
 import { NoteRepository } from '../notes/note-repository';
-import { db } from '../../storage/database';
+import { storage } from '../../storage';
 import { OutboxRepository } from '../../sync/outbox-repository';
 import {
   CategoryRepository,
   CategoryRepositoryError,
 } from './category-repository';
 
-const outbox = new OutboxRepository();
-const categories = new CategoryRepository(outbox);
-const notes = new NoteRepository(outbox);
+const outbox = new OutboxRepository(storage);
+const categories = new CategoryRepository(storage, outbox);
+const notes = new NoteRepository(storage, outbox);
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
-  await db.delete();
+  await storage.delete();
 });
 
 describe('category repository', () => {
@@ -36,10 +36,12 @@ describe('category repository', () => {
   });
 
   it('rejects text and multiple emoji as category icons', async () => {
-    await expect(categories.create({ name: 'Work', icon: 'text' }))
-      .rejects.toThrow('Category icon must be a single emoji.');
-    await expect(categories.create({ name: 'Work', icon: '💼🚀' }))
-      .rejects.toThrow('Category icon must be a single emoji.');
+    await expect(
+      categories.create({ name: 'Work', icon: 'text' }),
+    ).rejects.toThrow('Category icon must be a single emoji.');
+    await expect(
+      categories.create({ name: 'Work', icon: '💼🚀' }),
+    ).rejects.toThrow('Category icon must be a single emoji.');
   });
 
   it('rejects cycles', async () => {
@@ -54,7 +56,10 @@ describe('category repository', () => {
   it('moves a category to another parent', async () => {
     const firstParentId = await categories.create({ name: 'First' });
     const secondParentId = await categories.create({ name: 'Second' });
-    const childId = await categories.create({ name: 'Child', parentId: firstParentId });
+    const childId = await categories.create({
+      name: 'Child',
+      parentId: firstParentId,
+    });
 
     await categories.move(childId, secondParentId);
 
@@ -92,22 +97,27 @@ describe('category repository', () => {
     const categoryId = await categories.create({ name: 'Temporary' });
     await categories.delete(categoryId);
 
-    expect(await db.categories.get(categoryId)).toBeUndefined();
+    expect(await storage.categories.get(categoryId)).toBeUndefined();
     expect(await outbox.listForEntity(categoryId, 'category')).toEqual([]);
   });
 
   it('assigns and filters categorized and uncategorized notes', async () => {
     const categoryId = await categories.create({ name: 'Work' });
-    const categorizedId = await notes.create({ title: 'Categorized', categoryId });
+    const categorizedId = await notes.create({
+      title: 'Categorized',
+      categoryId,
+    });
     const uncategorizedId = await notes.create({ title: 'Uncategorized' });
 
     expect((await notes.list({ categoryId })).map(({ id }) => id)).toEqual([
       categorizedId,
     ]);
-    expect((await notes.list({ categoryId: null })).map(({ id }) => id)).toEqual([
-      uncategorizedId,
-    ]);
-    expect(await notes.list({ categoryId, includeAllCategories: true })).toHaveLength(2);
+    expect(
+      (await notes.list({ categoryId: null })).map(({ id }) => id),
+    ).toEqual([uncategorizedId]);
+    expect(
+      await notes.list({ categoryId, includeAllCategories: true }),
+    ).toHaveLength(2);
   });
 
   it('coalesces local category updates into its pending create', async () => {
@@ -120,8 +130,8 @@ describe('category repository', () => {
   });
 
   it('migrates existing categories and outbox payloads with no icon', async () => {
-    db.close();
-    await db.delete();
+    storage.close();
+    await storage.delete();
     const legacy = new Dexie('bigmind');
     legacy.version(3).stores({
       notes: 'id, title, categoryId, updatedAt, deletedAt, syncStatus',
@@ -158,12 +168,17 @@ describe('category repository', () => {
     await legacy.table('syncState').add({ key: 'cursor', value: '42' });
     legacy.close();
 
-    await db.open();
+    await storage.open();
 
-    expect(await db.categories.get(legacyCategory.id)).toMatchObject({ icon: null });
-    expect(await db.outbox.get('legacy-operation')).toMatchObject({
+    expect(await storage.categories.get(legacyCategory.id)).toMatchObject({
+      icon: null,
+    });
+    expect(await storage.outbox.get('legacy-operation')).toMatchObject({
       payload: { icon: null },
     });
-    expect(await db.syncState.get('cursor')).toEqual({ key: 'cursor', value: '42' });
+    expect(await storage.syncState.get('cursor')).toEqual({
+      key: 'cursor',
+      value: '42',
+    });
   });
 });

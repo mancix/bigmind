@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import request from 'supertest';
 
@@ -57,33 +57,72 @@ describe('Todos API (integration)', () => {
 
     const [owner] = await database.db
       .insert(users)
-      .values({ id: '00000000-0000-4000-8000-000000000050', email: OWNER_EMAIL, passwordHash: 'hash', createdAt: now, updatedAt: now })
+      .values({
+        id: '00000000-0000-4000-8000-000000000050',
+        email: OWNER_EMAIL,
+        passwordHash: 'hash',
+        createdAt: now,
+        updatedAt: now,
+      })
       .returning();
 
     const [viewer] = await database.db
       .insert(users)
-      .values({ id: '00000000-0000-4000-8000-000000000051', email: VIEWER_EMAIL, passwordHash: 'hash', createdAt: now, updatedAt: now })
+      .values({
+        id: '00000000-0000-4000-8000-000000000051',
+        email: VIEWER_EMAIL,
+        passwordHash: 'hash',
+        createdAt: now,
+        updatedAt: now,
+      })
       .returning();
 
     await database.db.insert(workspaces).values({
-      id: WORKSPACE_ID, name: 'Todos WS', createdAt: now, updatedAt: now,
+      id: WORKSPACE_ID,
+      name: 'Todos WS',
+      createdAt: now,
+      updatedAt: now,
     });
 
     await database.db.insert(workspaceMembers).values([
-      { workspaceId: WORKSPACE_ID, userId: owner.id, role: 'OWNER', createdAt: now },
-      { workspaceId: WORKSPACE_ID, userId: viewer.id, role: 'VIEWER', createdAt: now },
+      {
+        workspaceId: WORKSPACE_ID,
+        userId: owner.id,
+        role: 'OWNER',
+        createdAt: now,
+      },
+      {
+        workspaceId: WORKSPACE_ID,
+        userId: viewer.id,
+        role: 'VIEWER',
+        createdAt: now,
+      },
     ]);
 
     await database.db.insert(notes).values([
       {
-        id: NOTE_ID, workspaceId: WORKSPACE_ID, title: 'Todo Note', content: '',
-        templateType: 'TODO_LIST', version: 1, categoryId: null,
-        createdAt: now, updatedAt: now, deletedAt: null,
+        id: NOTE_ID,
+        workspaceId: WORKSPACE_ID,
+        title: 'Todo Note',
+        content: '',
+        templateType: 'TODO_LIST',
+        version: 1,
+        categoryId: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
       {
-        id: MARKDOWN_NOTE_ID, workspaceId: WORKSPACE_ID, title: 'Markdown Note', content: '',
-        templateType: 'MARKDOWN', version: 1, categoryId: null,
-        createdAt: now, updatedAt: now, deletedAt: null,
+        id: MARKDOWN_NOTE_ID,
+        workspaceId: WORKSPACE_ID,
+        title: 'Markdown Note',
+        content: '',
+        templateType: 'MARKDOWN',
+        version: 1,
+        categoryId: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
     ]);
   });

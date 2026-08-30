@@ -1,16 +1,19 @@
-import { Outlet, createFileRoute, Link, useMatchRoute } from '@tanstack/react-router';
+import {
+  Outlet,
+  createFileRoute,
+  Link,
+  useMatchRoute,
+} from '@tanstack/react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 
-import {
-  conflictRepository,
-} from '../features/conflicts/conflict-repository';
+import { conflictRepository } from '../features/conflicts/conflict-repository';
 import {
   formatConflictDate,
   formatConflictType,
   formatEntityType,
   getEntityTitle,
 } from '../features/conflicts/conflict-format';
-import type { ConflictRecord } from '../storage/database';
+import type { ConflictRecord } from '../storage';
 
 export const Route = createFileRoute('/conflicts')({
   component: ConflictsPage,
@@ -18,10 +21,7 @@ export const Route = createFileRoute('/conflicts')({
 
 function ConflictsPage() {
   const matchRoute = useMatchRoute();
-  const openConflicts = useLiveQuery(
-    () => conflictRepository.listOpen(),
-    [],
-  );
+  const openConflicts = useLiveQuery(() => conflictRepository.listOpen(), []);
   const resolvedConflicts = useLiveQuery(
     () => conflictRepository.listResolved(),
     [],
@@ -52,7 +52,10 @@ function ConflictsPage() {
       </header>
 
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-        Open Conflicts {openCount > 0 ? <span className="text-red-600">({openCount})</span> : null}
+        Open Conflicts{' '}
+        {openCount > 0 ? (
+          <span className="text-red-600">({openCount})</span>
+        ) : null}
       </h2>
       {openCount === 0 ? (
         <p className="text-sm text-slate-400">No open conflicts.</p>
@@ -65,7 +68,10 @@ function ConflictsPage() {
       )}
 
       <h2 className="mt-8 mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-        Resolved Conflicts {resolvedCount > 0 ? <span className="text-slate-500">({resolvedCount})</span> : null}
+        Resolved Conflicts{' '}
+        {resolvedCount > 0 ? (
+          <span className="text-slate-500">({resolvedCount})</span>
+        ) : null}
       </h2>
       {resolvedCount === 0 ? (
         <p className="text-sm text-slate-400">No resolved conflicts.</p>
@@ -99,12 +105,16 @@ function ConflictCard({
             {getEntityTitle(conflict) ?? formatEntityType(conflict.entityType)}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            {formatEntityType(conflict.entityType)} · {formatConflictType(conflict.conflictType)} · Created {formatConflictDate(conflict.createdAt)}
+            {formatEntityType(conflict.entityType)} ·{' '}
+            {formatConflictType(conflict.conflictType)} · Created{' '}
+            {formatConflictDate(conflict.createdAt)}
           </p>
           {muted && conflict.resolution ? (
             <p className="mt-1 text-xs text-slate-400">
               Resolved via {conflict.resolution}
-              {conflict.resolvedAt ? ` on ${formatConflictDate(conflict.resolvedAt)}` : ''}
+              {conflict.resolvedAt
+                ? ` on ${formatConflictDate(conflict.resolvedAt)}`
+                : ''}
             </p>
           ) : null}
         </div>

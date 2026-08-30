@@ -55,8 +55,9 @@ describe('category rules', () => {
   });
 
   it('sorts siblings by position', () => {
-    expect(sortCategoriesByPosition(categories.slice(0, 2)).map(({ id }) => id))
-      .toEqual(['root-a', 'root-b']);
+    expect(
+      sortCategoriesByPosition(categories.slice(0, 2)).map(({ id }) => id),
+    ).toEqual(['root-a', 'root-b']);
   });
 
   it('builds an ordered category tree', () => {
@@ -98,6 +99,7 @@ function category(
   return {
     id,
     name,
+    description: '',
     icon: null,
     parentId,
     position,

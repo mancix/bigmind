@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+dev-dist
 tmp
 out-tsc
 
@@ -72,3 +73,15 @@ opencode.json
 
 # TypeScript build artifacts
 *.tsbuildinfo
+
+# Expo / React Native
+node_modules/
+.expo/
+.yarn/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision

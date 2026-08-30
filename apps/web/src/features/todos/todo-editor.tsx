@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { TodoItemRecord } from '../../storage/database';
+import type { TodoItemRecord } from '../../storage';
 import { Icon } from '../../components/icon';
 import { todoRepository } from './todo-repository';
 
@@ -25,7 +25,9 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
   const editInputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const visibleItems = items.filter((item) => !hideCompleted || !item.completed);
+  const visibleItems = items.filter(
+    (item) => !hideCompleted || !item.completed,
+  );
 
   const setItemRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) itemRefs.current.set(id, el);
@@ -44,7 +46,9 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
     }
   }, [noteId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -93,7 +97,10 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
       e.preventDefault();
       await handleEditSubmit(itemId);
       const idx = visibleItems.findIndex((i) => i.id === itemId);
-      const nextItem = idx >= 0 && idx < visibleItems.length - 1 ? visibleItems[idx + 1] : null;
+      const nextItem =
+        idx >= 0 && idx < visibleItems.length - 1
+          ? visibleItems[idx + 1]
+          : null;
       if (nextItem) {
         startEdit(nextItem);
       } else {
@@ -149,7 +156,11 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
 
   async function doReorder(itemId: string, targetIndex: number) {
     try {
-      const reordered = await todoRepository.reorder(noteId, itemId, targetIndex);
+      const reordered = await todoRepository.reorder(
+        noteId,
+        itemId,
+        targetIndex,
+      );
       setItems(reordered);
       setError('');
     } catch {
@@ -225,8 +236,13 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
             role="listitem"
             draggable={editingId !== item.id}
             onDragStart={() => setDragIndex(index)}
-            onDragOver={(e) => { e.preventDefault(); }}
-            onDrop={(e) => { e.preventDefault(); void handleDrop(index); }}
+            onDragOver={(e) => {
+              e.preventDefault();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              void handleDrop(index);
+            }}
             onDragEnd={handleDragEnd}
             className={`group flex items-center gap-3 rounded-xl border border-outline-variant bg-surface-lowest px-4 py-3 shadow-sm transition hover:border-primary ${
               dragIndex === index ? 'opacity-50' : ''
@@ -243,7 +259,12 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
               }`}
             >
               {item.completed && (
-                <svg viewBox="0 0 20 20" fill="currentColor" className="size-3.5" aria-hidden="true">
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="size-3.5"
+                  aria-hidden="true"
+                >
                   <path
                     fillRule="evenodd"
                     d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -253,7 +274,10 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
               )}
             </button>
 
-            <div ref={(el) => setItemRef(item.id, el)} className="min-w-0 flex-1">
+            <div
+              ref={(el) => setItemRef(item.id, el)}
+              className="min-w-0 flex-1"
+            >
               {editingId === item.id ? (
                 <input
                   ref={editInputRef}
@@ -289,7 +313,10 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
               )}
             </div>
 
-            <span className="hidden cursor-grab text-outline-variant hover:text-outline active:cursor-grabbing md:inline" aria-hidden="true">
+            <span
+              className="hidden cursor-grab text-outline-variant hover:text-outline active:cursor-grabbing md:inline"
+              aria-hidden="true"
+            >
               <Icon name="drag_indicator" className="text-[18px]" />
             </span>
 
@@ -326,7 +353,10 @@ export function TodoEditor({ noteId }: TodoEditorProps) {
         ))}
       </ul>
 
-      <div className="flex gap-4 text-xs text-on-surface-variant" aria-live="polite">
+      <div
+        className="flex gap-4 text-xs text-on-surface-variant"
+        aria-live="polite"
+      >
         <span>Remaining: {remaining}</span>
         <span>Completed: {completed}</span>
       </div>

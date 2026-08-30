@@ -1,8 +1,14 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import type { AuthResponse } from '@bigmind/contracts';
 
-import { db } from '../../storage/database';
+import { storage } from '../../storage';
 import { authStore, type AuthState, type AuthUser } from './auth-store';
 import { getApiUrl } from './api-url';
 import { clearStoredWorkspaceId } from '../workspaces/workspace-store';
@@ -19,9 +25,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function resetLocalData(): Promise<void> {
-  await db.transaction('rw', db.tables, async () => {
-    await Promise.all(db.tables.map((table) => table.clear()));
-  });
+  await storage.clearAll();
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -99,7 +103,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         authState,
-        isAuthenticated: authState === 'authenticated' || authState === 'offline_authenticated',
+        isAuthenticated:
+          authState === 'authenticated' ||
+          authState === 'offline_authenticated',
         login,
         register,
         logout,

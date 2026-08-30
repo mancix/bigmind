@@ -1,9 +1,8 @@
+import { storage, type OutboxRecord, type ReminderRecord } from '../../storage';
 import {
-  db,
-  type OutboxRecord,
-  type ReminderRecord,
-} from '../../storage/database';
-import { OutboxRepository, outboxRepository } from '../../sync/outbox-repository';
+  OutboxRepository,
+  outboxRepository,
+} from '../../sync/outbox-repository';
 import { requestBackgroundSync } from '../../sync/background-sync';
 import { getStoredWorkspaceId } from '../workspaces/workspace-store';
 
@@ -27,10 +26,7 @@ export class RemindersRepository {
 
   async list(): Promise<ReminderRecord[]> {
     const wsId = getStoredWorkspaceId() ?? '';
-    return db.reminders
-      .where('workspaceId')
-      .equals(wsId)
-      .sortBy('dueAt');
+    return storage.reminders.where('workspaceId').equals(wsId).sortBy('dueAt');
   }
 
   async create(input: CreateReminderInput): Promise<string> {
@@ -53,8 +49,10 @@ export class RemindersRepository {
     };
 
     await this.outbox.transactionWithReminders(async () => {
-      await db.reminders.add(reminder);
-      await this.outbox.add(this.createOperation('create', reminder, timestamp));
+      await storage.reminders.add(reminder);
+      await this.outbox.add(
+        this.createOperation('create', reminder, timestamp),
+      );
     });
 
     requestBackgroundSync();
@@ -64,26 +62,36 @@ export class RemindersRepository {
   async update(id: string, changes: UpdateReminderInput): Promise<void> {
     const timestamp = this.now();
     await this.outbox.transactionWithReminders(async () => {
-      const existing = await db.reminders.get(id);
+      const existing = await storage.reminders.get(id);
       if (!existing) return;
       const updated: ReminderRecord = {
         ...existing,
-        title: changes.title !== undefined ? changes.title.trim() : existing.title,
-        description: changes.description !== undefined ? changes.description : existing.description,
+        title:
+          changes.title !== undefined ? changes.title.trim() : existing.title,
+        description:
+          changes.description !== undefined
+            ? changes.description
+            : existing.description,
         dueAt: changes.dueAt !== undefined ? changes.dueAt : existing.dueAt,
-        completed: changes.completed !== undefined ? changes.completed : existing.completed,
-        linkedNoteId: changes.linkedNoteId !== undefined ? changes.linkedNoteId : existing.linkedNoteId,
+        completed:
+          changes.completed !== undefined
+            ? changes.completed
+            : existing.completed,
+        linkedNoteId:
+          changes.linkedNoteId !== undefined
+            ? changes.linkedNoteId
+            : existing.linkedNoteId,
         updatedAt: timestamp,
         syncStatus: 'pending',
       };
-      await db.reminders.put(updated);
+      await storage.reminders.put(updated);
       await this.upsertOperation(updated, timestamp);
     });
     requestBackgroundSync();
   }
 
   async toggle(id: string): Promise<void> {
-    const existing = await db.reminders.get(id);
+    const existing = await storage.reminders.get(id);
     if (!existing) return;
     await this.update(id, { completed: !existing.completed });
   }
@@ -91,12 +99,12 @@ export class RemindersRepository {
   async remove(id: string): Promise<void> {
     const timestamp = this.now();
     await this.outbox.transactionWithReminders(async () => {
-      const existing = await db.reminders.get(id);
+      const existing = await storage.reminders.get(id);
       if (!existing) return;
       const operations = await this.coalescableOperations(id);
       const pendingCreate = operations.find((op) => op.operation === 'create');
       if (pendingCreate) {
-        await db.reminders.delete(id);
+        await storage.reminders.delete(id);
         await this.outbox.removeMany(operations.map((op) => op.id));
         return;
       }
@@ -104,7 +112,7 @@ export class RemindersRepository {
         ...existing,
         syncStatus: 'pending',
       };
-      await db.reminders.put(deleted);
+      await storage.reminders.put(deleted);
       await this.outbox.add(this.createOperation('delete', deleted, timestamp));
     });
     requestBackgroundSync();
@@ -116,14 +124,20 @@ export class RemindersRepository {
     );
   }
 
-  private async upsertOperation(reminder: ReminderRecord, timestamp: string): Promise<void> {
+  private async upsertOperation(
+    reminder: ReminderRecord,
+    timestamp: string,
+  ): Promise<void> {
     const operations = await this.coalescableOperations(reminder.id);
-    const reusable = operations.find((op) => op.operation === 'create')
-      ?? operations.find((op) => op.operation === 'update');
+    const reusable =
+      operations.find((op) => op.operation === 'create') ??
+      operations.find((op) => op.operation === 'update');
     if (reusable) {
       await this.outbox.save(this.resetOperation(reusable, reminder));
     } else {
-      await this.outbox.add(this.createOperation('update', reminder, timestamp));
+      await this.outbox.add(
+        this.createOperation('update', reminder, timestamp),
+      );
     }
   }
 
@@ -145,7 +159,10 @@ export class RemindersRepository {
     };
   }
 
-  private resetOperation(operation: OutboxRecord, payload: ReminderRecord): OutboxRecord {
+  private resetOperation(
+    operation: OutboxRecord,
+    payload: ReminderRecord,
+  ): OutboxRecord {
     return {
       ...operation,
       payload,

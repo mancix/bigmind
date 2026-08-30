@@ -1,0 +1,29 @@
+{
+  "name": "@bigmind/auth",
+  "version": "0.0.1",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "@bigmind/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "nx": {
+    "name": "@bigmind/auth",
+    "tags": [
+      "type:auth",
+      "platform:shared"
+    ]
+  },
+  "dependencies": {
+    "@bigmind/contracts": "workspace:*"
+  }
+}

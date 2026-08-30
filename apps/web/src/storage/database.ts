@@ -1,147 +1,47 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Note } from '@bigmind/domain/notes';
-import type { Category } from '@bigmind/domain/categories';
-import type {
-  ConflictEntityType,
-  ConflictStatus,
-  ConflictType,
-} from '@bigmind/domain/conflicts';
 import { extractWikiLinks, normalizeWikiLinkName } from '@bigmind/domain/links';
-import type { SyncEntityType, SyncOperationType } from '@bigmind/domain/sync';
 
-import type { RemoteChange, SyncError } from '../sync/sync.types';
+/**
+ * Dexie schema and migrations (IndexedDB).
+ *
+ * This module is intentionally platform-specific: it declares the Dexie
+ * database, the versioned schemas, and the upgrade migrations. Application
+ * code must NOT import it directly — use the `StorageAdapter` facade from
+ * `./dexie-storage-adapter.ts` / `./index.ts` instead.
+ */
+import type {
+  CategoryRecord,
+  ConflictRecord,
+  NoteAliasRecord,
+  NoteLinkRecord,
+  NoteRecord,
+  NotificationRecord,
+  OutboxRecord,
+  ReminderRecord,
+  SyncStateRecord,
+  TodoItemRecord,
+} from '@bigmind/storage';
 
-export interface NoteConflict {
-  operationId?: string;
-  baseVersion: number;
-  localPayload: NoteRecord;
-  remoteChange?: RemoteChange;
-  detectedAt: string;
-}
+import type { RemoteChange } from '../sync/sync.types';
 
-export interface NoteRecord extends Note {
-  syncStatus: 'synced' | 'pending' | 'conflict';
-  conflict?: NoteConflict;
-}
+export type {
+  CategoryConflict,
+  CategoryRecord,
+  ConflictRecord,
+  ConflictSnapshotRecord,
+  NoteAliasRecord,
+  NoteConflict,
+  NoteLinkRecord,
+  NoteRecord,
+  NotificationRecord,
+  OutboxRecord,
+  ReminderRecord,
+  SyncRecord,
+  SyncStateRecord,
+  TodoItemRecord,
+} from '@bigmind/storage';
 
-export interface CategoryConflict {
-  operationId?: string;
-  baseVersion: number;
-  localPayload: CategoryRecord;
-  remoteChange?: RemoteChange;
-  detectedAt: string;
-}
-
-export interface CategoryRecord extends Category {
-  syncStatus: 'synced' | 'pending' | 'conflict';
-  conflict?: CategoryConflict;
-}
-
-export interface NoteLinkRecord {
-  id: string;
-  sourceNoteId: string;
-  targetNoteId: string | null;
-  targetTitle: string;
-  createdAt: string;
-  deletedAt: string | null;
-  version: number;
-  syncStatus: 'local' | 'synced' | 'pending' | 'conflict';
-}
-
-export interface NoteAliasRecord {
-  id: string;
-  noteId: string;
-  alias: string;
-  normalizedAlias: string;
-  createdAt: string;
-}
-
-export interface TodoItemRecord {
-  id: string;
-  todoListId: string;
-  text: string;
-  completed: boolean;
-  position: number;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  version: number;
-  syncStatus: 'synced' | 'pending' | 'conflict';
-}
-
-export interface ReminderRecord {
-  id: string;
-  workspaceId: string;
-  title: string;
-  description: string;
-  dueAt: string;
-  completed: boolean;
-  createdBy: string;
-  linkedNoteId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  version: number;
-  syncStatus: 'synced' | 'pending' | 'conflict';
-}
-
-export interface NotificationRecord {
-  id: string;
-  workspaceId: string;
-  type: 'reminder_due' | 'note_modified' | 'workspace_invitation';
-  title: string;
-  body: string;
-  read: boolean;
-  createdAt: string;
-  version: number;
-  syncStatus: 'synced' | 'pending' | 'conflict';
-}
-
-export type SyncRecord = NoteRecord | CategoryRecord | NoteLinkRecord | TodoItemRecord | ReminderRecord | NotificationRecord;
-
-export interface OutboxRecord {
-  id: string;
-  entityId: string;
-  entityType: SyncEntityType;
-  operation: SyncOperationType;
-  baseVersion: number;
-  payload: SyncRecord;
-  createdAt: string;
-  retryCount: number;
-  status: 'pending' | 'processing' | 'failed' | 'completed';
-  lastError?: SyncError;
-  nextRetryAt?: string;
-  processingStartedAt?: string;
-}
-
-export interface SyncStateRecord {
-  key: string;
-  value: string;
-}
-
-export interface ConflictSnapshotRecord<TEntity = unknown> {
-  version: number;
-  entity: TEntity;
-  changedAt?: string;
-  operation?: 'create' | 'update' | 'delete' | 'none';
-}
-
-export interface ConflictRecord {
-  id: string;
-  entityType: ConflictEntityType;
-  entityId: string;
-  conflictType: ConflictType;
-  localVersion: number;
-  remoteVersion: number;
-  localSnapshot: ConflictSnapshotRecord;
-  remoteSnapshot: ConflictSnapshotRecord;
-  baseVersion?: number;
-  createdAt: string;
-  resolvedAt?: string;
-  status: ConflictStatus;
-  resolution?: 'keep_mine' | 'keep_remote' | 'merge_manually' | 'restore' | 'delete_mine' | 'dismiss';
-}
-
-class BigMindDatabase extends Dexie {
+export class BigMindDatabase extends Dexie {
   notes!: EntityTable<NoteRecord, 'id'>;
   categories!: EntityTable<CategoryRecord, 'id'>;
   noteLinks!: EntityTable<NoteLinkRecord, 'id'>;
@@ -238,8 +138,7 @@ class BigMindDatabase extends Dexie {
           'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
         noteLinks:
           'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+        noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
         outbox:
           'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
         syncState: 'key',
@@ -291,18 +190,18 @@ class BigMindDatabase extends Dexie {
           'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
         noteLinks:
           'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+        noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
         outbox:
           'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
         syncState: 'key',
-        conflicts:
-          'id, entityId, entityType, status, createdAt',
+        conflicts: 'id, entityId, entityType, status, createdAt',
       })
       .upgrade(async (transaction) => {
         await transaction
           .table<NoteRecord>('notes')
-          .filter((note) => note.syncStatus === 'conflict' && Boolean(note.conflict))
+          .filter(
+            (note) => note.syncStatus === 'conflict' && Boolean(note.conflict),
+          )
           .modify((note) => {
             const inline = note.conflict as
               | {
@@ -398,18 +297,17 @@ class BigMindDatabase extends Dexie {
 
     this.version(7)
       .stores({
-        notes: 'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
+        notes:
+          'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
         categories:
           'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
         noteLinks:
           'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+        noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
         outbox:
           'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
         syncState: 'key',
-        conflicts:
-          'id, entityId, entityType, status, createdAt',
+        conflicts: 'id, entityId, entityType, status, createdAt',
       })
       .upgrade(async (transaction) => {
         await transaction
@@ -423,27 +321,25 @@ class BigMindDatabase extends Dexie {
           .toCollection()
           .modify((operation) => {
             if (operation.entityType === 'note') {
-              ((operation.payload as any)).templateType ??= 'MARKDOWN';
+              (operation.payload as any).templateType ??= 'MARKDOWN';
             }
           });
       });
 
     this.version(8)
       .stores({
-        notes: 'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
+        notes:
+          'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
         categories:
           'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
         noteLinks:
           'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
-        todoItems:
-          'id, todoListId, syncStatus',
+        noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+        todoItems: 'id, todoListId, syncStatus',
         outbox:
           'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
         syncState: 'key',
-        conflicts:
-          'id, entityId, entityType, status, createdAt',
+        conflicts: 'id, entityId, entityType, status, createdAt',
       })
       .upgrade(async (transaction) => {
         await transaction
@@ -451,27 +347,25 @@ class BigMindDatabase extends Dexie {
           .toCollection()
           .modify((operation) => {
             if (operation.entityType === 'todo_item') {
-              ((operation.payload as any)).version ??= 0;
-              ((operation.payload as any)).deletedAt ??= null;
+              (operation.payload as any).version ??= 0;
+              (operation.payload as any).deletedAt ??= null;
             }
           });
       });
     this.version(9)
       .stores({
-        notes: 'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
+        notes:
+          'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
         categories:
           'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
         noteLinks:
           'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
-        todoItems:
-          'id, todoListId, syncStatus',
+        noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+        todoItems: 'id, todoListId, syncStatus',
         outbox:
           'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
         syncState: 'key',
-        conflicts:
-          'id, entityId, entityType, status, createdAt',
+        conflicts: 'id, entityId, entityType, status, createdAt',
       })
       .upgrade(async (transaction) => {
         await transaction
@@ -485,52 +379,43 @@ class BigMindDatabase extends Dexie {
           .toCollection()
           .modify((operation) => {
             if (operation.entityType === 'category') {
-              ((operation.payload as any)).description ??= '';
+              (operation.payload as any).description ??= '';
             }
           });
       });
 
-    this.version(10)
-      .stores({
-        notes: 'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
-        categories:
-          'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
-        noteLinks:
-          'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
-        todoItems:
-          'id, todoListId, syncStatus',
-        reminders:
-          'id, workspaceId, dueAt, completed, syncStatus',
-        outbox:
-          'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
-        syncState: 'key',
-        conflicts:
-          'id, entityId, entityType, status, createdAt',
-      });
+    this.version(10).stores({
+      notes:
+        'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
+      categories:
+        'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
+      noteLinks:
+        'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
+      noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+      todoItems: 'id, todoListId, syncStatus',
+      reminders: 'id, workspaceId, dueAt, completed, syncStatus',
+      outbox:
+        'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
+      syncState: 'key',
+      conflicts: 'id, entityId, entityType, status, createdAt',
+    });
 
-    this.version(11)
-      .stores({
-        notes: 'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
-        categories:
-          'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
-        noteLinks:
-          'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
-        noteAliases:
-          'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
-        todoItems:
-          'id, todoListId, syncStatus',
-        reminders:
-          'id, workspaceId, dueAt, completed, syncStatus',
-        notifications:
-          'id, workspaceId, type, read, createdAt, syncStatus',
-        outbox:
-          'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
-        syncState: 'key',
-        conflicts:
-          'id, entityId, entityType, status, createdAt',
-      });
+    this.version(11).stores({
+      notes:
+        'id, title, categoryId, templateType, updatedAt, deletedAt, syncStatus',
+      categories:
+        'id, parentId, position, updatedAt, deletedAt, syncStatus, [parentId+position]',
+      noteLinks:
+        'id, sourceNoteId, targetNoteId, syncStatus, [sourceNoteId+targetNoteId]',
+      noteAliases: 'id, noteId, normalizedAlias, [noteId+normalizedAlias]',
+      todoItems: 'id, todoListId, syncStatus',
+      reminders: 'id, workspaceId, dueAt, completed, syncStatus',
+      notifications: 'id, workspaceId, type, read, createdAt, syncStatus',
+      outbox:
+        'id, entityId, entityType, createdAt, status, nextRetryAt, [entityId+status]',
+      syncState: 'key',
+      conflicts: 'id, entityId, entityType, status, createdAt',
+    });
   }
 }
 

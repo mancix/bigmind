@@ -1,9 +1,12 @@
 import {
-  db,
+  storage,
   type NotificationRecord,
   type OutboxRecord,
-} from '../../storage/database';
-import { OutboxRepository, outboxRepository } from '../../sync/outbox-repository';
+} from '../../storage';
+import {
+  OutboxRepository,
+  outboxRepository,
+} from '../../sync/outbox-repository';
 import { requestBackgroundSync } from '../../sync/background-sync';
 import { getStoredWorkspaceId } from '../workspaces/workspace-store';
 import type { NotificationType } from '@bigmind/domain/notifications';
@@ -19,7 +22,7 @@ export class NotificationsRepository {
 
   async list(): Promise<NotificationRecord[]> {
     const wsId = getStoredWorkspaceId() ?? '';
-    return db.notifications
+    return storage.notifications
       .where('workspaceId')
       .equals(wsId)
       .reverse()
@@ -28,7 +31,7 @@ export class NotificationsRepository {
 
   async countUnread(): Promise<number> {
     const wsId = getStoredWorkspaceId() ?? '';
-    return db.notifications
+    return storage.notifications
       .where('workspaceId')
       .equals(wsId)
       .filter((n) => !n.read)
@@ -52,8 +55,10 @@ export class NotificationsRepository {
     };
 
     await this.outbox.transactionWithReminders(async () => {
-      await db.notifications.add(notification);
-      await this.outbox.add(this.createOperation('create', notification, timestamp));
+      await storage.notifications.add(notification);
+      await this.outbox.add(
+        this.createOperation('create', notification, timestamp),
+      );
     });
 
     requestBackgroundSync();
@@ -63,14 +68,14 @@ export class NotificationsRepository {
   async markRead(id: string): Promise<void> {
     const timestamp = this.now();
     await this.outbox.transactionWithReminders(async () => {
-      const existing = await db.notifications.get(id);
+      const existing = await storage.notifications.get(id);
       if (!existing) return;
       const updated: NotificationRecord = {
         ...existing,
         read: true,
         syncStatus: 'pending',
       };
-      await db.notifications.put(updated);
+      await storage.notifications.put(updated);
       await this.upsertOperation(updated, timestamp);
     });
     requestBackgroundSync();
@@ -79,14 +84,18 @@ export class NotificationsRepository {
   async markAllRead(): Promise<void> {
     const wsId = getStoredWorkspaceId() ?? '';
     const timestamp = this.now();
-    const unread = await db.notifications
+    const unread = await storage.notifications
       .where('workspaceId')
       .equals(wsId)
       .filter((n) => !n.read)
       .toArray();
     for (const n of unread) {
-      const updated: NotificationRecord = { ...n, read: true, syncStatus: 'pending' };
-      await db.notifications.put(updated);
+      const updated: NotificationRecord = {
+        ...n,
+        read: true,
+        syncStatus: 'pending',
+      };
+      await storage.notifications.put(updated);
       await this.upsertOperation(updated, timestamp);
     }
     requestBackgroundSync();
@@ -95,17 +104,20 @@ export class NotificationsRepository {
   async remove(id: string): Promise<void> {
     const timestamp = this.now();
     await this.outbox.transactionWithReminders(async () => {
-      const existing = await db.notifications.get(id);
+      const existing = await storage.notifications.get(id);
       if (!existing) return;
       const operations = await this.coalescableOperations(id);
       const pendingCreate = operations.find((op) => op.operation === 'create');
       if (pendingCreate) {
-        await db.notifications.delete(id);
+        await storage.notifications.delete(id);
         await this.outbox.removeMany(operations.map((op) => op.id));
         return;
       }
-      await db.notifications.delete(id);
-      const deleted: NotificationRecord = { ...existing, syncStatus: 'pending' };
+      await storage.notifications.delete(id);
+      const deleted: NotificationRecord = {
+        ...existing,
+        syncStatus: 'pending',
+      };
       await this.outbox.add(this.createOperation('delete', deleted, timestamp));
     });
     requestBackgroundSync();
@@ -117,14 +129,20 @@ export class NotificationsRepository {
     );
   }
 
-  private async upsertOperation(notification: NotificationRecord, timestamp: string): Promise<void> {
+  private async upsertOperation(
+    notification: NotificationRecord,
+    timestamp: string,
+  ): Promise<void> {
     const operations = await this.coalescableOperations(notification.id);
-    const reusable = operations.find((op) => op.operation === 'create')
-      ?? operations.find((op) => op.operation === 'update');
+    const reusable =
+      operations.find((op) => op.operation === 'create') ??
+      operations.find((op) => op.operation === 'update');
     if (reusable) {
       await this.outbox.save(this.resetOperation(reusable, notification));
     } else {
-      await this.outbox.add(this.createOperation('update', notification, timestamp));
+      await this.outbox.add(
+        this.createOperation('update', notification, timestamp),
+      );
     }
   }
 
@@ -146,7 +164,10 @@ export class NotificationsRepository {
     };
   }
 
-  private resetOperation(operation: OutboxRecord, payload: NotificationRecord): OutboxRecord {
+  private resetOperation(
+    operation: OutboxRecord,
+    payload: NotificationRecord,
+  ): OutboxRecord {
     return {
       ...operation,
       payload,

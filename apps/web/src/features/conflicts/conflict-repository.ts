@@ -6,13 +6,13 @@ import type {
 import { wouldCreateCategoryCycle } from '@bigmind/domain/categories';
 
 import {
-  db,
+  storage,
   type CategoryRecord,
   type ConflictRecord,
   type ConflictSnapshotRecord,
   type NoteLinkRecord,
   type NoteRecord,
-} from '../../storage/database';
+} from '../../storage';
 import {
   OutboxRepository,
   outboxRepository,
@@ -20,11 +20,7 @@ import {
 import { requestBackgroundSync } from '../../sync/background-sync';
 
 export type ConflictResolutionStrategy =
-  | 'keep_mine'
-  | 'keep_remote'
-  | 'merge_manually'
-  | 'restore'
-  | 'delete_mine';
+  'keep_mine' | 'keep_remote' | 'merge_manually' | 'restore' | 'delete_mine';
 
 export interface CreateConflictInput {
   entityType: ConflictEntityType;
@@ -68,12 +64,10 @@ function notifyConflictCreated(conflict: ConflictRecord): void {
 }
 
 export class ConflictRepository {
-  constructor(
-    private readonly outbox: OutboxRepository = outboxRepository,
-  ) {}
+  constructor(private readonly outbox: OutboxRepository = outboxRepository) {}
 
   async listOpen(): Promise<ConflictRecord[]> {
-    const conflicts = await db.conflicts
+    const conflicts = await storage.conflicts
       .where('status')
       .equals('open')
       .toArray();
@@ -83,25 +77,26 @@ export class ConflictRepository {
   }
 
   async listResolved(): Promise<ConflictRecord[]> {
-    const conflicts = await db.conflicts
+    const conflicts = await storage.conflicts
       .where('status')
       .anyOf('resolved', 'dismissed')
       .toArray();
-    return conflicts.sort((left, right) =>
-      right.resolvedAt?.localeCompare(left.resolvedAt ?? '') ?? 0,
+    return conflicts.sort(
+      (left, right) =>
+        right.resolvedAt?.localeCompare(left.resolvedAt ?? '') ?? 0,
     );
   }
 
   async listDismissed(): Promise<ConflictRecord[]> {
-    return db.conflicts.where('status').equals('dismissed').toArray();
+    return storage.conflicts.where('status').equals('dismissed').toArray();
   }
 
   async find(id: string): Promise<ConflictRecord | undefined> {
-    return db.conflicts.get(id);
+    return storage.conflicts.get(id);
   }
 
   async countOpen(): Promise<number> {
-    return db.conflicts.where('status').equals('open').count();
+    return storage.conflicts.where('status').equals('open').count();
   }
 
   async create(input: CreateConflictInput): Promise<string> {
@@ -122,7 +117,7 @@ export class ConflictRepository {
         status: 'open',
         resolvedAt: undefined,
       };
-      await db.conflicts.put(merged);
+      await storage.conflicts.put(merged);
       notifyConflictCreated(merged);
       return merged.id;
     }
@@ -143,14 +138,14 @@ export class ConflictRepository {
       status: 'open',
     };
 
-    await db.conflicts.add(conflict);
+    await storage.conflicts.add(conflict);
     notifyConflictCreated(conflict);
     return id;
   }
 
   async dismiss(id: string): Promise<void> {
     const resolvedAt = new Date().toISOString();
-    await db.conflicts.update(id, {
+    await storage.conflicts.update(id, {
       status: 'dismissed',
       resolvedAt,
       resolution: 'dismiss',
@@ -232,7 +227,7 @@ export class ConflictRepository {
       );
     }
 
-    const existing = await db.notes.get(conflict.entityId);
+    const existing = await storage.notes.get(conflict.entityId);
     if (!existing || existing.deletedAt) {
       throw new ConflictRepositoryError(
         'ENTITY_NOT_FOUND',
@@ -257,7 +252,7 @@ export class ConflictRepository {
       conflict: undefined,
     };
 
-    await db.notes.put(mergedNote);
+    await storage.notes.put(mergedNote);
     await this.requeueOperationForEntity(
       'note',
       conflict.entityId,
@@ -279,7 +274,7 @@ export class ConflictRepository {
       );
     }
 
-    const existing = await db.notes.get(conflict.entityId);
+    const existing = await storage.notes.get(conflict.entityId);
     if (!existing) {
       throw new ConflictRepositoryError(
         'ENTITY_NOT_FOUND',
@@ -295,7 +290,7 @@ export class ConflictRepository {
       conflict: undefined,
     };
 
-    await db.notes.put(restored);
+    await storage.notes.put(restored);
     await this.requeueOperationForEntity(
       'note',
       conflict.entityId,
@@ -315,7 +310,7 @@ export class ConflictRepository {
     } else if (conflict.entityType === 'category') {
       await this.acceptRemoteCategoryDeletion(conflict);
     } else {
-      await db.noteLinks.delete(conflict.entityId);
+      await storage.noteLinks.delete(conflict.entityId);
       await this.outbox.removeMany(
         (await this.outbox.listForEntity(conflict.entityId, 'link')).map(
           (operation) => operation.id,
@@ -329,7 +324,7 @@ export class ConflictRepository {
   }
 
   private async requireConflict(id: string): Promise<ConflictRecord> {
-    const conflict = await db.conflicts.get(id);
+    const conflict = await storage.conflicts.get(id);
 
     if (!conflict) {
       throw new ConflictRepositoryError(
@@ -345,7 +340,7 @@ export class ConflictRepository {
     entityType: ConflictEntityType,
     entityId: string,
   ): Promise<ConflictRecord | undefined> {
-    return db.conflicts
+    return storage.conflicts
       .where('entityId')
       .equals(entityId)
       .filter(
@@ -360,7 +355,7 @@ export class ConflictRepository {
     resolution: ConflictResolutionStrategy,
     mergedEntity?: unknown,
   ): Promise<void> {
-    const conflict = await db.conflicts.get(id);
+    const conflict = await storage.conflicts.get(id);
     if (!conflict) return;
 
     const resolvedAt = new Date().toISOString();
@@ -372,7 +367,7 @@ export class ConflictRepository {
           }
         : undefined;
 
-    await db.conflicts.put({
+    await storage.conflicts.put({
       ...conflict,
       status: 'resolved',
       resolvedAt,
@@ -386,18 +381,20 @@ export class ConflictRepository {
   }
 
   private async clearEntityConflictFlag(conflictId: string): Promise<void> {
-    const conflict = await db.conflicts.get(conflictId);
+    const conflict = await storage.conflicts.get(conflictId);
     if (!conflict) return;
 
     if (conflict.entityType === 'note') {
-      const note = await db.notes.get(conflict.entityId);
+      const note = await storage.notes.get(conflict.entityId);
       if (note && note.syncStatus === 'conflict') {
-        await db.notes.update(conflict.entityId, { conflict: undefined });
+        await storage.notes.update(conflict.entityId, { conflict: undefined });
       }
     } else if (conflict.entityType === 'category') {
-      const category = await db.categories.get(conflict.entityId);
+      const category = await storage.categories.get(conflict.entityId);
       if (category && category.syncStatus === 'conflict') {
-        await db.categories.update(conflict.entityId, { conflict: undefined });
+        await storage.categories.update(conflict.entityId, {
+          conflict: undefined,
+        });
       }
     }
   }
@@ -411,8 +408,8 @@ export class ConflictRepository {
 
     const record =
       entityType === 'note'
-        ? await db.notes.get(entityId)
-        : await db.categories.get(entityId);
+        ? await storage.notes.get(entityId)
+        : await storage.categories.get(entityId);
 
     if (!record) return;
 
@@ -422,8 +419,8 @@ export class ConflictRepository {
       conflict: undefined,
     };
     await (entityType === 'note'
-      ? db.notes.put(pendingRecord as NoteRecord)
-      : db.categories.put(pendingRecord as CategoryRecord));
+      ? storage.notes.put(pendingRecord as NoteRecord)
+      : storage.categories.put(pendingRecord as CategoryRecord));
     await this.requeueOperationForEntity(
       entityType,
       entityId,
@@ -457,7 +454,8 @@ export class ConflictRepository {
     if (existing) {
       await this.outbox.save({
         ...existing,
-        operation: existing.operation === 'delete' ? 'update' : existing.operation,
+        operation:
+          existing.operation === 'delete' ? 'update' : existing.operation,
         payload,
         baseVersion,
         retryCount: 0,
@@ -490,10 +488,13 @@ export class ConflictRepository {
     conflict: ConflictRecord,
     _strategy: ConflictResolutionStrategy,
   ): Promise<void> {
-    const link = await db.noteLinks.get(conflict.entityId);
+    const link = await storage.noteLinks.get(conflict.entityId);
     if (!link) return;
 
-    const operations = await this.outbox.listForEntity(conflict.entityId, 'link');
+    const operations = await this.outbox.listForEntity(
+      conflict.entityId,
+      'link',
+    );
     const reusable = operations.find(
       (operation) => operation.operation === 'create',
     );
@@ -526,11 +527,13 @@ export class ConflictRepository {
     requestBackgroundSync();
   }
 
-  private async applyRemoteNoteSnapshot(conflict: ConflictRecord): Promise<void> {
+  private async applyRemoteNoteSnapshot(
+    conflict: ConflictRecord,
+  ): Promise<void> {
     const remote = conflict.remoteSnapshot.entity as NoteRecord | undefined;
     if (!remote) return;
 
-    const existing = await db.notes.get(conflict.entityId);
+    const existing = await storage.notes.get(conflict.entityId);
     const remoteRecord: NoteRecord = {
       ...(remote as NoteRecord),
       id: conflict.entityId,
@@ -543,7 +546,7 @@ export class ConflictRepository {
       return;
     }
 
-    await db.notes.put(remoteRecord);
+    await storage.notes.put(remoteRecord);
     await this.outbox.removeMany(
       (await this.outbox.listForEntity(conflict.entityId, 'note')).map(
         (operation) => operation.id,
@@ -566,10 +569,16 @@ export class ConflictRepository {
     };
 
     if (remoteRecord.parentId) {
-      const categories = (await db.categories.toArray()).filter(
+      const categories = (await storage.categories.toArray()).filter(
         (category) => category.id !== conflict.entityId,
       );
-      if (wouldCreateCategoryCycle(categories, conflict.entityId, remoteRecord.parentId)) {
+      if (
+        wouldCreateCategoryCycle(
+          categories,
+          conflict.entityId,
+          remoteRecord.parentId,
+        )
+      ) {
         throw new ConflictRepositoryError(
           'CATEGORY_CYCLE',
           'Accepting the remote category move would create a cycle.',
@@ -577,7 +586,7 @@ export class ConflictRepository {
       }
     }
 
-    await db.categories.put(remoteRecord);
+    await storage.categories.put(remoteRecord);
     await this.outbox.removeMany(
       (await this.outbox.listForEntity(conflict.entityId, 'category')).map(
         (operation) => operation.id,
@@ -585,7 +594,9 @@ export class ConflictRepository {
     );
   }
 
-  private async applyRemoteLinkSnapshot(conflict: ConflictRecord): Promise<void> {
+  private async applyRemoteLinkSnapshot(
+    conflict: ConflictRecord,
+  ): Promise<void> {
     const remote = conflict.remoteSnapshot.entity as NoteLinkRecord | undefined;
     if (!remote) return;
 
@@ -596,7 +607,7 @@ export class ConflictRepository {
       syncStatus: 'synced',
     };
 
-    await db.noteLinks.put(remoteRecord);
+    await storage.noteLinks.put(remoteRecord);
     await this.outbox.removeMany(
       (await this.outbox.listForEntity(conflict.entityId, 'link')).map(
         (operation) => operation.id,
@@ -604,8 +615,10 @@ export class ConflictRepository {
     );
   }
 
-  private async acceptRemoteNoteDeletion(conflict: ConflictRecord): Promise<void> {
-    const existing = await db.notes.get(conflict.entityId);
+  private async acceptRemoteNoteDeletion(
+    conflict: ConflictRecord,
+  ): Promise<void> {
+    const existing = await storage.notes.get(conflict.entityId);
     const remoteChangedAt =
       conflict.remoteSnapshot.changedAt ?? new Date().toISOString();
 
@@ -618,7 +631,7 @@ export class ConflictRepository {
         syncStatus: 'synced',
         conflict: undefined,
       };
-      await db.notes.put(deleted);
+      await storage.notes.put(deleted);
     }
 
     await this.outbox.removeMany(
@@ -631,7 +644,7 @@ export class ConflictRepository {
   private async acceptRemoteCategoryDeletion(
     conflict: ConflictRecord,
   ): Promise<void> {
-    const existing = await db.categories.get(conflict.entityId);
+    const existing = await storage.categories.get(conflict.entityId);
     const remoteChangedAt =
       conflict.remoteSnapshot.changedAt ?? new Date().toISOString();
 
@@ -644,7 +657,7 @@ export class ConflictRepository {
         syncStatus: 'synced',
         conflict: undefined,
       };
-      await db.categories.put(deleted);
+      await storage.categories.put(deleted);
     }
 
     await this.outbox.removeMany(
@@ -658,4 +671,4 @@ export class ConflictRepository {
 export const conflictRepository = new ConflictRepository();
 
 // Re-export for callers that want to build snapshots with the shared type.
-export type { ConflictSnapshot, ConflictSnapshotRecord } ;
+export type { ConflictSnapshot, ConflictSnapshotRecord };

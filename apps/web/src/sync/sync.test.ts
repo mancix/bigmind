@@ -3,15 +3,17 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { conflictRepository } from '../features/conflicts/conflict-repository';
+import { conflictService } from '../features/conflicts/conflict-service';
+import { authStore } from '../features/auth/auth-store';
 import { NoteRepository } from '../features/notes/note-repository';
 import { CategoryRepository } from '../features/categories/category-repository';
 import { LinkRepository } from '../features/links/link-repository';
 import {
-  db,
+  storage,
   type CategoryRecord,
   type NoteLinkRecord,
   type NoteRecord,
-} from '../storage/database';
+} from '../storage';
 import { FakeSyncTransport } from './fake-sync-transport';
 import { HttpSyncTransport } from './http-sync-transport';
 import { OutboxRepository } from './outbox-repository';
@@ -28,10 +30,16 @@ import type {
   SyncOperation,
 } from './sync.types';
 
-const outbox = new OutboxRepository();
-const syncState = new SyncStateRepository();
-const noteRepository = new NoteRepository(outbox);
-const categoryRepository = new CategoryRepository(outbox);
+const outbox = new OutboxRepository(storage);
+const syncState = new SyncStateRepository(storage);
+
+const TEST_AUTH = {
+  getHeaders: () => ({}),
+  getAuthState: () => 'authenticated' as const,
+  refreshAccessToken: () => Promise.resolve('ok' as const),
+};
+const noteRepository = new NoteRepository(storage, outbox);
+const categoryRepository = new CategoryRepository(storage, outbox);
 
 describe('background sync requests', () => {
   it('notifies active subscribers and supports unsubscribing', () => {
@@ -47,12 +55,12 @@ describe('background sync requests', () => {
 });
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
-  await db.delete();
+  await storage.delete();
 });
 
 describe('note outbox coalescing', () => {
@@ -81,7 +89,7 @@ describe('note outbox coalescing', () => {
 
     await noteRepository.delete(noteId);
 
-    expect(await db.notes.get(noteId)).toBeUndefined();
+    expect(await storage.notes.get(noteId)).toBeUndefined();
     expect(await outbox.listForEntity(noteId)).toEqual([]);
   });
 });
@@ -136,7 +144,11 @@ describe('fake sync transport', () => {
       id: 'category-delete',
       operation: 'delete' as const,
       baseVersion: 2,
-      payload: { ...update.payload, deletedAt: '2026-01-01T00:02:00.000Z', version: 2 },
+      payload: {
+        ...update.payload,
+        deletedAt: '2026-01-01T00:02:00.000Z',
+        version: 2,
+      },
     };
     const [deleted] = await transport.push([deletion]);
 
@@ -145,7 +157,12 @@ describe('fake sync transport', () => {
       { status: 'accepted', version: 2 },
       { status: 'accepted', version: 3 },
     ]);
-    expect((await transport.pull()).changes.map(({ entityType, operation }) => ({ entityType, operation }))).toEqual([
+    expect(
+      (await transport.pull()).changes.map(({ entityType, operation }) => ({
+        entityType,
+        operation,
+      })),
+    ).toEqual([
       { entityType: 'category', operation: 'create' },
       { entityType: 'category', operation: 'update' },
       { entityType: 'category', operation: 'delete' },
@@ -158,12 +175,14 @@ describe('fake sync transport', () => {
     const first = await transport.push([create]);
     expect(await transport.push([create])).toEqual(first);
 
-    const [stale] = await transport.push([{
-      ...create,
-      id: 'category-stale',
-      operation: 'update',
-      baseVersion: 0,
-    }]);
+    const [stale] = await transport.push([
+      {
+        ...create,
+        id: 'category-stale',
+        operation: 'update',
+        baseVersion: 0,
+      },
+    ]);
     expect(stale).toMatchObject({ status: 'conflict' });
     expect((await transport.pull()).changes).toHaveLength(1);
   });
@@ -202,9 +221,10 @@ describe('HTTP sync transport', () => {
       '22222222-2222-4222-8222-222222222222',
       '11111111-1111-4111-8111-111111111111',
     );
-    const transport = new HttpSyncTransport(
-      'http://localhost:3000',
-      vi.fn().mockResolvedValue({
+    const transport = new HttpSyncTransport({
+      baseUrl: 'http://localhost:3000',
+      auth: TEST_AUTH,
+      api: vi.fn().mockResolvedValue({
         status: 200,
         body: {
           results: [
@@ -220,7 +240,7 @@ describe('HTTP sync transport', () => {
         },
         headers: new Headers(),
       }),
-    );
+    });
 
     await expect(transport.push([operation])).resolves.toEqual([
       {
@@ -243,9 +263,10 @@ describe('HTTP sync transport', () => {
       version: 2,
       updatedAt: '2026-01-01T00:01:00.000Z',
     };
-    const transport = new HttpSyncTransport(
-      'http://localhost:3000',
-      vi.fn().mockResolvedValue({
+    const transport = new HttpSyncTransport({
+      baseUrl: 'http://localhost:3000',
+      auth: TEST_AUTH,
+      api: vi.fn().mockResolvedValue({
         status: 200,
         body: {
           results: [
@@ -262,7 +283,7 @@ describe('HTTP sync transport', () => {
         },
         headers: new Headers(),
       }),
-    );
+    });
 
     await expect(transport.push([operation])).resolves.toMatchObject([
       {
@@ -280,10 +301,11 @@ describe('HTTP sync transport', () => {
 
   it('keeps an operation queued when the API is unavailable', async () => {
     const noteId = await noteRepository.create({ title: 'Offline note' });
-    const transport = new HttpSyncTransport(
-      'http://localhost:3000',
-      vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
-    );
+    const transport = new HttpSyncTransport({
+      baseUrl: 'http://localhost:3000',
+      auth: TEST_AUTH,
+      api: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+    });
 
     await createEngine(transport).sync();
 
@@ -301,8 +323,14 @@ describe('HTTP sync transport', () => {
 describe('sync engine', () => {
   it('persists a pulled category tree and note assignment', async () => {
     const transport = new FakeSyncTransport();
-    const category = createCategoryOperation('remote-category-create', 'remote-category');
-    const note = createOperation('remote-note-create', 'remote-categorized-note');
+    const category = createCategoryOperation(
+      'remote-category-create',
+      'remote-category',
+    );
+    const note = createOperation(
+      'remote-note-create',
+      'remote-categorized-note',
+    );
     note.payload.categoryId = category.entityId;
     await transport.push([note, category]);
 
@@ -311,7 +339,7 @@ describe('sync engine', () => {
     expect(await categoryRepository.listTree()).toMatchObject([
       { id: 'remote-category', name: 'Category' },
     ]);
-    expect(await db.notes.get('remote-categorized-note')).toMatchObject({
+    expect(await storage.notes.get('remote-categorized-note')).toMatchObject({
       categoryId: 'remote-category',
       syncStatus: 'synced',
     });
@@ -331,13 +359,14 @@ describe('sync engine', () => {
 
     await createEngine(transport).sync();
 
-    expect(await db.noteLinks.get('remote-link')).toMatchObject({
+    expect(await storage.noteLinks.get('remote-link')).toMatchObject({
       sourceNoteId: source.entityId,
       targetNoteId: target.entityId,
       syncStatus: 'synced',
     });
-    expect((await new LinkRepository(outbox).getBacklinks(target.entityId)))
-      .toMatchObject([{ id: source.entityId }]);
+    expect(
+      await new LinkRepository(storage, outbox).getBacklinks(target.entityId),
+    ).toMatchObject([{ id: source.entityId }]);
   });
   it('removes accepted operations and marks notes synced', async () => {
     const noteId = await noteRepository.create({ title: 'Queued note' });
@@ -346,7 +375,7 @@ describe('sync engine', () => {
     await engine.sync();
 
     expect(await outbox.countPending()).toBe(0);
-    expect(await db.notes.get(noteId)).toMatchObject({
+    expect(await storage.notes.get(noteId)).toMatchObject({
       version: 1,
       syncStatus: 'synced',
     });
@@ -379,7 +408,7 @@ describe('sync engine', () => {
       version: 1,
       syncStatus: 'synced' as const,
     };
-    await db.notes.add(localNote);
+    await storage.notes.add(localNote);
     await noteRepository.update(localNote.id, {
       content: 'Keep this newer local edit',
     });
@@ -418,7 +447,7 @@ describe('sync engine', () => {
 
     await createEngine(transport).sync();
 
-    const conflictedNote = await db.notes.get(localNote.id);
+    const conflictedNote = await storage.notes.get(localNote.id);
 
     expect(conflictedNote).toMatchObject({
       content: 'Keep this newer local edit',
@@ -481,7 +510,7 @@ describe('sync engine', () => {
 
     await engine.sync();
     expect(await syncState.getCursor()).toBe('1');
-    expect(await db.notes.get('remote-note')).toMatchObject({
+    expect(await storage.notes.get('remote-note')).toMatchObject({
       title: 'Test note',
       syncStatus: 'synced',
     });
@@ -532,11 +561,15 @@ describe('sync engine', () => {
 
 function createEngine(transport: SyncTransport): SyncEngine {
   return new SyncEngine(
-    transport,
-    outbox,
-    syncState,
-    conflictRepository,
-    undefined,
+    {
+      transport,
+      storage,
+      outbox,
+      syncState,
+      conflicts: conflictRepository,
+      buildConflictSnapshots: (input) => conflictService.buildSnapshots(input),
+      getAuthState: () => authStore.getState(),
+    },
     {
       isOnline: () => true,
       now: () => new Date('2026-01-01T00:00:00.000Z'),
@@ -565,6 +598,7 @@ function createNote(id: string): NoteRecord {
     title: 'Test note',
     content: '',
     categoryId: null,
+    templateType: 'MARKDOWN',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     version: 0,
@@ -585,6 +619,7 @@ function createCategoryOperation(
     payload: {
       id: entityId,
       name: 'Category',
+      description: '',
       icon: null,
       parentId: null,
       position: 0,

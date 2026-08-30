@@ -48,6 +48,21 @@
     },
     {
       "path": "../../libs/contracts/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/auth/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/sync/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/storage/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/features/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/markdown/tsconfig.lib.json"
     }
   ]
 }

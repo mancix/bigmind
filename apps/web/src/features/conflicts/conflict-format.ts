@@ -1,4 +1,4 @@
-import type { ConflictRecord } from '../../storage/database';
+import type { ConflictRecord } from '../../storage';
 
 export function describeEntityLabel(
   conflict: Pick<ConflictRecord, 'entityType' | 'entityId'>,
@@ -8,16 +8,23 @@ export function describeEntityLabel(
 
 export function getEntityTitle(conflict: ConflictRecord): string | undefined {
   const local = conflict.localSnapshot.entity as
-    | { title?: string; name?: string; targetTitle?: string }
-    | undefined;
+    { title?: string; name?: string; targetTitle?: string } | undefined;
   const remote = conflict.remoteSnapshot.entity as
-    | { title?: string; name?: string; targetTitle?: string }
-    | undefined;
+    { title?: string; name?: string; targetTitle?: string } | undefined;
 
-  return local?.title ?? remote?.title ?? local?.name ?? remote?.name ?? remote?.targetTitle ?? local?.targetTitle;
+  return (
+    local?.title ??
+    remote?.title ??
+    local?.name ??
+    remote?.name ??
+    remote?.targetTitle ??
+    local?.targetTitle
+  );
 }
 
-export function formatConflictType(type: ConflictRecord['conflictType']): string {
+export function formatConflictType(
+  type: ConflictRecord['conflictType'],
+): string {
   switch (type) {
     case 'content':
       return 'Content conflict';

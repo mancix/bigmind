@@ -10,9 +10,14 @@
     ]
   },
   "dependencies": {
+    "@bigmind/auth": "workspace:*",
     "@bigmind/contracts": "workspace:*",
     "@bigmind/domain": "workspace:*",
-    "@ts-rest/core": "^3.52.1"
+    "@bigmind/storage": "workspace:*",
+    "@bigmind/sync": "workspace:*",
+    "@ts-rest/core": "^3.52.1",
+    "@bigmind/features": "workspace:*",
+    "@bigmind/markdown": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/user-event": "^14.6.1"

@@ -13,16 +13,16 @@ import {
 import { ConflictIndicator } from './conflict-indicator';
 import { ConflictNotifications } from './conflict-notifications';
 import { conflictRepository } from '../features/conflicts/conflict-repository';
-import { db, type ConflictRecord } from '../storage/database';
+import { storage, type ConflictRecord } from '../storage';
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
   cleanup();
-  await db.delete();
+  await storage.delete();
 });
 
 function makeConflict(id: string): ConflictRecord {
@@ -73,7 +73,7 @@ describe('ConflictIndicator', () => {
   });
 
   it('displays "1 conflict" and links to /conflicts when one is open', async () => {
-    await db.conflicts.add(makeConflict('conflict-open'));
+    await storage.conflicts.add(makeConflict('conflict-open'));
     render(<RouterProvider router={buildRouter(<ConflictIndicator />)} />);
     const link = await screen.findByText('1 conflict');
     expect(link).toBeDefined();
@@ -101,8 +101,12 @@ describe('ConflictNotifications', () => {
       remoteSnapshot: { version: 2, entity: {} },
     });
 
-    expect(await screen.findByText('Synchronization conflict detected.')).toBeDefined();
+    expect(
+      await screen.findByText('Synchronization conflict detected.'),
+    ).toBeDefined();
     expect(screen.getByText('Review')).toBeDefined();
-    expect(screen.getByText('Review').getAttribute('href')).toContain('/conflicts/');
+    expect(screen.getByText('Review').getAttribute('href')).toContain(
+      '/conflicts/',
+    );
   });
 });

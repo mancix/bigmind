@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ConflictService } from './conflict-service';
-import type {
-  CategoryRecord,
-  NoteLinkRecord,
-  NoteRecord,
-} from '../../storage/database';
+import type { CategoryRecord, NoteLinkRecord, NoteRecord } from '../../storage';
 import type { RemoteChange } from '../../sync/sync.types';
 
 const service = new ConflictService();
@@ -15,6 +11,7 @@ const note: NoteRecord = {
   title: 'Original',
   content: 'Original content',
   categoryId: null,
+  templateType: 'MARKDOWN',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   version: 1,
@@ -24,6 +21,7 @@ const note: NoteRecord = {
 const category: CategoryRecord = {
   id: 'category-1',
   name: 'Root',
+  description: '',
   icon: null,
   parentId: null,
   position: 0,
@@ -113,7 +111,11 @@ describe('ConflictService.buildSnapshots', () => {
       entityType: 'note',
       entityId: note.id,
       localEntity: note,
-      remoteChange: remoteChange('note', { ...note, content: 'Remote text' }, 3),
+      remoteChange: remoteChange(
+        'note',
+        { ...note, content: 'Remote text' },
+        3,
+      ),
       baseVersion: 1,
     });
 

@@ -78,6 +78,10 @@
       "options": {
         "targetName": "test"
       }
+    },
+    {
+      "plugin": "@nx/expo/plugin",
+      "options": {}
     }
   ],
   "neverConnectToCloud": true,

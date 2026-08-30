@@ -13,19 +13,22 @@ import {
 
 import { Route as ConflictsRoute } from './conflicts';
 import { conflictRepository } from '../features/conflicts/conflict-repository';
-import { db, type ConflictRecord } from '../storage/database';
+import { storage, type ConflictRecord } from '../storage';
 
 beforeEach(async () => {
-  await db.delete();
-  await db.open();
+  await storage.delete();
+  await storage.open();
 });
 
 afterEach(async () => {
   cleanup();
-  await db.delete();
+  await storage.delete();
 });
 
-function makeConflict(id: string, overrides: Partial<ConflictRecord> = {}): ConflictRecord {
+function makeConflict(
+  id: string,
+  overrides: Partial<ConflictRecord> = {},
+): ConflictRecord {
   return {
     id,
     entityType: 'note',
@@ -68,8 +71,11 @@ describe('ConflictsPage', () => {
   });
 
   it('renders open conflicts first with a Resolve link and treats resolved separately', async () => {
-    await db.conflicts.bulkAdd([
-      makeConflict('open-1', { conflictType: 'delete_vs_edit', status: 'open' }),
+    await storage.conflicts.bulkAdd([
+      makeConflict('open-1', {
+        conflictType: 'delete_vs_edit',
+        status: 'open',
+      }),
       makeConflict('open-2', { status: 'open' }),
       makeConflict('resolved-1', {
         status: 'resolved',
@@ -93,10 +99,16 @@ describe('ConflictsPage', () => {
   });
 
   it('filters open conflicts via the repository helpers', async () => {
-    await db.conflicts.bulkAdd([
+    await storage.conflicts.bulkAdd([
       makeConflict('a-1', { status: 'open' }),
-      makeConflict('a-2', { status: 'resolved', resolvedAt: '2026-01-01T00:00:00.000Z' }),
-      makeConflict('a-3', { status: 'dismissed', resolvedAt: '2026-01-01T00:00:00.000Z' }),
+      makeConflict('a-2', {
+        status: 'resolved',
+        resolvedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      makeConflict('a-3', {
+        status: 'dismissed',
+        resolvedAt: '2026-01-01T00:00:00.000Z',
+      }),
     ]);
 
     const open = await conflictRepository.listOpen();

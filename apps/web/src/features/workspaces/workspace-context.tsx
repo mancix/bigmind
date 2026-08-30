@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { db } from '../../storage/database';
+import { storage } from '../../storage';
 import { requestBackgroundSync } from '../../sync/background-sync';
 import {
   fetchUserWorkspaces,
@@ -29,7 +29,10 @@ interface WorkspaceContextValue {
     name: string,
     description?: string | null,
   ) => Promise<WorkspaceInfo>;
-  renameWorkspace: (workspaceId: string, name: string) => Promise<WorkspaceInfo>;
+  renameWorkspace: (
+    workspaceId: string,
+    name: string,
+  ) => Promise<WorkspaceInfo>;
   deleteWorkspace: (workspaceId: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -37,14 +40,13 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 async function resetLocalData(): Promise<void> {
-  await db.transaction('rw', db.tables, async () => {
-    await Promise.all(db.tables.map((table) => table.clear()));
-  });
+  await storage.clearAll();
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { authState } = useAuth();
-  const isAuthReady = authState === 'authenticated' || authState === 'offline_authenticated';
+  const isAuthReady =
+    authState === 'authenticated' || authState === 'offline_authenticated';
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(
     getCurrentWorkspaceId(),
@@ -104,7 +106,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     async (workspaceId: string, name: string) => {
       const updated = await renameWorkspaceApi(workspaceId, name);
       setWorkspaces((prev) =>
-        prev.map((ws) => (ws.id === workspaceId ? { ...ws, name: updated.name } : ws)),
+        prev.map((ws) =>
+          ws.id === workspaceId ? { ...ws, name: updated.name } : ws,
+        ),
       );
       return updated;
     },
@@ -130,8 +134,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [currentId],
   );
 
-  const currentWorkspace =
-    workspaces.find((ws) => ws.id === currentId) ?? null;
+  const currentWorkspace = workspaces.find((ws) => ws.id === currentId) ?? null;
 
   return (
     <WorkspaceContext.Provider

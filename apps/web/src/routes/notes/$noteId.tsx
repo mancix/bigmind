@@ -1,23 +1,51 @@
-import { lazy, Suspense, type FocusEvent, type KeyboardEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createFileRoute, Link, notFound } from '@tanstack/react-router';
 import { useNavigate } from '@tanstack/react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { UNTITLED_NOTE_TITLE } from '@bigmind/domain/notes';
-import { buildCategoryTree, type CategoryTreeNode } from '@bigmind/domain/categories';
+import {
+  buildCategoryTree,
+  type CategoryTreeNode,
+} from '@bigmind/domain/categories';
 import { Icon } from '../../components/icon';
 
-const MarkdownEditor = lazy(() => import('../../features/notes/components/markdown-editor').then((m) => ({ default: m.MarkdownEditor })));
-const TodoEditor = lazy(() => import('../../features/todos/todo-editor').then((m) => ({ default: m.TodoEditor })));
 import { categoryRepository } from '../../features/categories/category-repository';
 import { conflictRepository } from '../../features/conflicts/conflict-repository';
 import { noteRepository } from '../../features/notes/note-repository';
 import { useNoteAutosave } from '../../features/notes/use-note-autosave';
 import { useWorkspaces } from '../../features/workspaces/workspace-context';
 import { moveNote, copyNote } from '../../features/notes/note-client';
-import { recordRecentNote, removeRecentNote } from '../../features/notes/recent-store';
-import { isFavorite, toggleFavoriteNote } from '../../features/notes/favorites-store';
+import {
+  recordRecentNote,
+  removeRecentNote,
+} from '../../features/notes/recent-store';
+import {
+  isFavorite,
+  toggleFavoriteNote,
+} from '../../features/notes/favorites-store';
 import type { SaveStatus as SaveStatusValue } from '../../features/notes/use-note-autosave';
 import { NoteLinksPanel } from '../../features/links/note-links-panel';
+
+const MarkdownEditor = lazy(() =>
+  import('../../features/notes/components/markdown-editor').then((m) => ({
+    default: m.MarkdownEditor,
+  })),
+);
+const TodoEditor = lazy(() =>
+  import('../../features/todos/todo-editor').then((m) => ({
+    default: m.TodoEditor,
+  })),
+);
 
 interface SaveStatusProps {
   status: SaveStatusValue;
@@ -55,7 +83,13 @@ function SaveStatus({ status }: SaveStatusProps) {
   return (
     <span className="flex items-center gap-1.5" role="status">
       <span className={`size-2 rounded-full ${dotColor[status]}`} />
-      <span className={status === 'error' ? 'text-xs text-error' : 'text-xs text-on-surface-variant'}>
+      <span
+        className={
+          status === 'error'
+            ? 'text-xs text-error'
+            : 'text-xs text-on-surface-variant'
+        }
+      >
         {labels[status]}
       </span>
     </span>
@@ -98,19 +132,18 @@ function NotePage() {
   const note = useLiveQuery(() => noteRepository.findById(noteId), [noteId]);
   const categories = useLiveQuery(() => categoryRepository.list(), []) ?? [];
   const noteSuggestions = useLiveQuery(() => noteRepository.list(), []) ?? [];
-  const openConflictsForNote = useLiveQuery(
-    async () => {
-      const conflicts = await conflictRepository.listOpen();
-      return conflicts.filter((conflict) => conflict.entityId === noteId);
-    },
-    [noteId],
-  );
+  const openConflictsForNote = useLiveQuery(async () => {
+    const conflicts = await conflictRepository.listOpen();
+    return conflicts.filter((conflict) => conflict.entityId === noteId);
+  }, [noteId]);
 
   const { workspaces, currentWorkspace } = useWorkspaces();
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [workspaceAction, setWorkspaceAction] = useState<'move' | 'copy' | null>(null);
+  const [workspaceAction, setWorkspaceAction] = useState<
+    'move' | 'copy' | null
+  >(null);
   const [workspaceError, setWorkspaceError] = useState('');
   const [isFav, setIsFav] = useState(false);
   const [favError, setFavError] = useState('');
@@ -156,7 +189,11 @@ function NotePage() {
       setTitle(note.title);
       setCategoryId(note.categoryId ?? '');
       if (note.syncStatus !== 'pending') {
-        recordRecentNote({ id: note.id, title: note.title, templateType: note.templateType });
+        recordRecentNote({
+          id: note.id,
+          title: note.title,
+          templateType: note.templateType,
+        });
       }
     }
   }, [note]);
@@ -218,7 +255,7 @@ function NotePage() {
   }
 
   const categoryName = note?.categoryId
-    ? categories.find((c) => c.id === note.categoryId)?.name ?? 'Category'
+    ? (categories.find((c) => c.id === note.categoryId)?.name ?? 'Category')
     : null;
 
   return (
@@ -275,37 +312,51 @@ function NotePage() {
                   All notes
                 </Link>
               )}
-              <Icon name="chevron_right" className="shrink-0 text-[16px] text-outline" />
+              <Icon
+                name="chevron_right"
+                className="shrink-0 text-[16px] text-outline"
+              />
               <span className="truncate text-on-surface-variant">Editor</span>
             </nav>
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
             {favError && (
-              <div className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">{favError}</div>
+              <div className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                {favError}
+              </div>
             )}
             <button
               type="button"
               onClick={handleToggleFavorite}
               aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
-              title={isFav ? 'Remove from favorites' : 'Add to favorites (max 5)'}
+              title={
+                isFav ? 'Remove from favorites' : 'Add to favorites (max 5)'
+              }
               className={`flex size-9 items-center justify-center rounded-lg transition hover:bg-surface-high ${isFav ? 'text-yellow-500' : 'text-outline hover:text-yellow-500'}`}
             >
               <Icon name="star" filled={isFav} className="text-[20px]" />
             </button>
 
-            {(currentWorkspace?.role === 'OWNER' || currentWorkspace?.role === 'EDITOR') && (
+            {(currentWorkspace?.role === 'OWNER' ||
+              currentWorkspace?.role === 'EDITOR') && (
               <>
                 <button
                   type="button"
-                  onClick={() => { setWorkspaceAction('move'); setWorkspaceError(''); }}
+                  onClick={() => {
+                    setWorkspaceAction('move');
+                    setWorkspaceError('');
+                  }}
                   className="text-xs font-medium text-on-surface-variant hover:text-on-surface"
                 >
                   Move To
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setWorkspaceAction('copy'); setWorkspaceError(''); }}
+                  onClick={() => {
+                    setWorkspaceAction('copy');
+                    setWorkspaceError('');
+                  }}
                   className="text-xs font-medium text-on-surface-variant hover:text-on-surface"
                 >
                   Copy To
@@ -334,7 +385,10 @@ function NotePage() {
                 <span className="text-xs text-outline">•</span>
               </>
             ) : null}
-            <NoteTimestamp createdAt={note.createdAt} updatedAt={note.updatedAt} />
+            <NoteTimestamp
+              createdAt={note.createdAt}
+              updatedAt={note.updatedAt}
+            />
           </div>
           <input
             type="text"
@@ -357,17 +411,35 @@ function NotePage() {
         </div>
 
         {/* Editor — todo items are cards themselves; markdown gets the white card */}
-        <div style={{ display: note?.templateType === 'TODO_LIST' ? 'block' : 'none' }}>
-          <Suspense fallback={<div className="py-8 text-center text-sm text-outline">Loading editor…</div>}>
+        <div
+          style={{
+            display: note?.templateType === 'TODO_LIST' ? 'block' : 'none',
+          }}
+        >
+          <Suspense
+            fallback={
+              <div className="py-8 text-center text-sm text-outline">
+                Loading editor…
+              </div>
+            }
+          >
             <TodoEditor noteId={noteId} />
           </Suspense>
         </div>
         <div
-          style={{ display: note?.templateType === 'MARKDOWN' ? 'block' : 'none' }}
+          style={{
+            display: note?.templateType === 'MARKDOWN' ? 'block' : 'none',
+          }}
           className="rounded-xl border border-outline-variant bg-surface-lowest shadow-sm"
         >
           {note && (
-            <Suspense fallback={<div className="py-8 text-center text-sm text-outline">Loading editor…</div>}>
+            <Suspense
+              fallback={
+                <div className="py-8 text-center text-sm text-outline">
+                  Loading editor…
+                </div>
+              }
+            >
               <div className="p-4">
                 <MarkdownEditor
                   key={note.id}
@@ -380,7 +452,9 @@ function NotePage() {
           )}
         </div>
 
-        {note?.templateType === 'MARKDOWN' && <NoteLinksPanel noteId={note.id} />}
+        {note?.templateType === 'MARKDOWN' && (
+          <NoteLinksPanel noteId={note.id} />
+        )}
 
         {/* Bottom workspace status */}
         <div className="mt-2 flex items-center justify-between px-1">
@@ -388,7 +462,9 @@ function NotePage() {
           <span className="text-xs text-outline">
             Autosaved at{' '}
             <time dateTime={note.updatedAt || note.createdAt}>
-              {noteTimeFormatter.format(new Date(note.updatedAt || note.createdAt))}
+              {noteTimeFormatter.format(
+                new Date(note.updatedAt || note.createdAt),
+              )}
             </time>
           </span>
         </div>
@@ -455,7 +531,10 @@ function NotePage() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm"
           role="presentation"
-          onMouseDown={() => { setWorkspaceAction(null); setWorkspaceError(''); }}
+          onMouseDown={() => {
+            setWorkspaceAction(null);
+            setWorkspaceError('');
+          }}
         >
           <div
             role="dialog"
@@ -464,7 +543,9 @@ function NotePage() {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 className="text-base font-semibold text-slate-900">
-              {workspaceAction === 'move' ? 'Move Note To Workspace' : 'Copy Note To Workspace'}
+              {workspaceAction === 'move'
+                ? 'Move Note To Workspace'
+                : 'Copy Note To Workspace'}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
               Select the destination workspace:
@@ -483,18 +564,27 @@ function NotePage() {
                       try {
                         if (workspaceAction === 'move') {
                           await moveNote(noteId, ws.id);
-                          await navigate({ to: '/', search: { category: undefined } });
+                          await navigate({
+                            to: '/',
+                            search: { category: undefined },
+                          });
                         } else {
                           await copyNote(noteId, ws.id);
                           setWorkspaceAction(null);
                         }
                       } catch (err) {
-                        setWorkspaceError(err instanceof Error ? err.message : 'Operation failed');
+                        setWorkspaceError(
+                          err instanceof Error
+                            ? err.message
+                            : 'Operation failed',
+                        );
                       }
                     }}
                     className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition hover:bg-slate-100 disabled:opacity-50"
                   >
-                    <span className="font-medium text-slate-800">{ws.name}</span>
+                    <span className="font-medium text-slate-800">
+                      {ws.name}
+                    </span>
                     <span className="text-xs text-slate-400">{ws.role}</span>
                   </button>
                 ))}
@@ -507,7 +597,10 @@ function NotePage() {
             <div className="mt-4 flex justify-end">
               <button
                 type="button"
-                onClick={() => { setWorkspaceAction(null); setWorkspaceError(''); }}
+                onClick={() => {
+                  setWorkspaceAction(null);
+                  setWorkspaceError('');
+                }}
                 className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
               >
                 Cancel
@@ -526,7 +619,11 @@ interface ConflictBannerProps {
   children: React.ReactNode;
 }
 
-function ConflictBanner({ conflictId, onDismiss, children }: ConflictBannerProps) {
+function ConflictBanner({
+  conflictId,
+  onDismiss,
+  children,
+}: ConflictBannerProps) {
   const [isBusy, setIsBusy] = useState(false);
 
   async function handleDismiss() {
@@ -600,7 +697,8 @@ function SearchableCategorySelect({
   }, [flat, searchQuery]);
 
   const selectedLabel = value
-    ? flat.find(({ category }) => category.id === value)?.category.name ?? 'Uncategorized'
+    ? (flat.find(({ category }) => category.id === value)?.category.name ??
+      'Uncategorized')
     : 'Uncategorized';
 
   useEffect(() => {
@@ -617,7 +715,10 @@ function SearchableCategorySelect({
   }
 
   return (
-    <div className="relative flex items-center gap-2 text-xs text-slate-500" onKeyDown={handleKeyDown}>
+    <div
+      className="relative flex items-center gap-2 text-xs text-slate-500"
+      onKeyDown={handleKeyDown}
+    >
       <span className="shrink-0">Category</span>
       <button
         type="button"
@@ -625,12 +726,30 @@ function SearchableCategorySelect({
         className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 transition hover:border-slate-400"
       >
         <span className="max-w-36 truncate">{selectedLabel}</span>
-        <svg className={`size-3 shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        <svg
+          className={`size-3 shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
       </button>
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl" style={{ minWidth: '14rem' }}>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
+            style={{ minWidth: '14rem' }}
+          >
             <div className="border-b border-slate-200 p-2">
               <input
                 ref={inputRef}
@@ -645,7 +764,10 @@ function SearchableCategorySelect({
               <li>
                 <button
                   type="button"
-                  onClick={() => { onChange(''); setIsOpen(false); }}
+                  onClick={() => {
+                    onChange('');
+                    setIsOpen(false);
+                  }}
                   className={`w-full rounded-md px-3 py-2 text-left text-sm transition ${
                     value === ''
                       ? 'bg-blue-50 text-blue-700'
@@ -659,7 +781,10 @@ function SearchableCategorySelect({
                 <li key={category.id}>
                   <button
                     type="button"
-                    onClick={() => { onChange(category.id); setIsOpen(false); }}
+                    onClick={() => {
+                      onChange(category.id);
+                      setIsOpen(false);
+                    }}
                     className={`w-full rounded-md px-3 py-2 text-left text-sm transition ${
                       value === category.id
                         ? 'bg-blue-50 text-blue-700'
@@ -667,7 +792,8 @@ function SearchableCategorySelect({
                     }`}
                     style={{ paddingLeft: `${12 + depth * 16}px` }}
                   >
-                    {category.icon ? `${category.icon} ` : ''}{category.name}
+                    {category.icon ? `${category.icon} ` : ''}
+                    {category.name}
                   </button>
                 </li>
               ))}

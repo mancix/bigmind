@@ -17,6 +17,24 @@
     },
     {
       "path": "./libs/domain"
+    },
+    {
+      "path": "./apps/mobile"
+    },
+    {
+      "path": "./libs/auth"
+    },
+    {
+      "path": "./libs/sync"
+    },
+    {
+      "path": "./libs/storage"
+    },
+    {
+      "path": "./libs/features"
+    },
+    {
+      "path": "./libs/markdown"
     }
   ]
 }
