@@ -46,11 +46,14 @@ See [LICENSE](LICENSE) for the full license text.
 
 ### Local-first storage and offline support
 
-- Notes, categories, resolved links, unresolved link names, and local note aliases are persisted in IndexedDB through Dexie.
+- Notes, categories, resolved links, unresolved link names, and local note aliases are persisted in IndexedDB through Dexie (web) or in SQLite through `SqliteStorageAdapter` (mobile) — both behind the **same `StorageAdapter` contract** (`@bigmind/storage`).
 - Note changes and outbox operations are written transactionally.
+- Storage survives app restarts, device reboots and long offline periods; the SQLite schema is versioned and migrated transactionally.
 - The application remains usable without an API connection.
 - Installable PWA with a service worker and offline-ready/update notifications.
-- Background synchronization after local changes, every 30 seconds while the app is open, when the tab becomes visible, and when the browser comes back online.
+- Background synchronization after local changes, every 30 seconds while the app is open, when the tab becomes visible, and when the browser comes back online (mobile: AppState + NetInfo).
+
+See [docs/storage-architecture.md](docs/storage-architecture.md) for the adapter contract, database schema, migration strategy, and the encrypted-storage roadmap.
 
 ### Synchronization
 
@@ -360,7 +363,7 @@ Deleting a note removes its outgoing links and backlinks locally and queues the 
 - **Workspace:** Nx, pnpm, TypeScript
 - **Web:** React, Vite, TanStack Router, Tailwind CSS, Milkdown Crepe
 - **Mobile:** Expo / React Native, React Navigation (bottom tabs + native stack), Expo SecureStore (tokens), jest-expo
-- **Local persistence:** Dexie and IndexedDB behind the shared `StorageAdapter` abstraction (web), in-memory placeholder + planned `SqliteStorageAdapter` (mobile)
+- **Local persistence:** Dexie and IndexedDB behind the shared `StorageAdapter` abstraction (web), `SqliteStorageAdapter` over expo-sqlite (mobile, default) with the in-memory adapter as the jest default
 - **PWA:** Vite PWA and Workbox
 - **API:** NestJS and ts-rest
 - **Database:** PostgreSQL and Drizzle ORM
@@ -379,16 +382,43 @@ libs/
   contracts/    Zod schemas and ts-rest API contracts
   domain/       Shared note types and pure business rules
   sync/         Shared sync engine, transports, and platform abstractions
-  storage/      Local records + the StorageAdapter abstraction
+  storage/      StorageAdapter abstraction + Memory/SQLite adapters, records,
+               schema & versioned migrations (see docs/storage-architecture.md)
   auth/         Shared AuthStore state machine (token refresh, offline auth)
-  features/     Shared repositories (notes, categories, links, todos)
+  features/     Shared repositories (notes, categories, links, todos,
+               reminders, notifications, conflicts) + DI provider
+               (see docs/shared-repository-architecture.md)
   markdown/     Shared Markdown parsing, HTML rendering, wiki-link
                  extraction/normalization, note preview, formatting helpers
 docker/
   postgres/     PostgreSQL development initialization
 ```
 
-Nx module-boundary rules keep the domain independent from applications and platform-specific infrastructure. The shared libraries (`contracts`, `domain`, `sync`, `storage`, `auth`, `features`, `markdown`) are consumed by both the web app and the mobile app. On the web, all persistence goes through the `StorageAdapter` contract (implemented by `DexieStorageAdapter`); the mobile placeholder uses the shared in-memory adapter until the expo-sqlite `SqliteStorageAdapter` lands.
+Nx module-boundary rules keep the domain independent from applications and platform-specific infrastructure. The shared libraries (`contracts`, `domain`, `sync`, `storage`, `auth`, `features`, `markdown`) are consumed by both the web app and the mobile app. On the web, all persistence goes through the `StorageAdapter` contract (implemented by `DexieStorageAdapter`); on mobile, the storage provider wires `SqliteStorageAdapter` (expo-sqlite) by default and the in-memory adapter in tests — switching engines never changes repository code.
+
+## Shared repository architecture
+
+All client business logic for persistence lives in **one set of repository implementations** shared by the web and mobile apps (`@bigmind/features`): `NoteRepository`, `CategoryRepository`, `LinkRepository`, `TodoRepository`, `RemindersRepository`, `NotificationsRepository`, and `ConflictRepository`. Repositories depend only on the `StorageAdapter` contract and the shared sync interfaces — they import no React, React Native, IndexedDB, SQLite, or browser/native APIs.
+
+```text
+┌────────────────────────────────────┐   ┌──────────────────────────────┐
+│        @bigmind/features          │   │      Platform storage        │
+│   (shared repositories)           │   │                              │
+│   Note · Category · Link · Todo  │──▶│  Web:    DexieStorageAdapter  │
+│   Reminder · Notification ·      │   │  Mobile: SqliteStorageAdapter │
+│   Conflict                        │   │  Tests:  MemoryStorageAdapter│
+└───────┬──────────────────────────┘   └──────────────────────────────┘
+        │ depends on
+        ▼
+   StorageAdapter (@bigmind/storage)
+   SyncOutbox / requestBackgroundSync (@bigmind/sync)
+```
+
+- **Dependency injection** — `createRepositoryProvider(storage, outbox, { workspace })` builds every repository from a storage adapter once, at bootstrap. Web and mobile wire their own adapter + `WorkspaceContext` (the “current workspace” source: `localStorage` on web, AsyncStorage on mobile); switching storage never touches repository code.
+- **No behavior change** — the repositories moved into the shared library are byte-identical to the previous web implementations; the web modules became thin re-exports.
+- **Future-proof** — encrypted storage, attachments, multi-workspace caching, and a desktop app slot in behind `StorageAdapter` / `WorkspaceContext` without repository changes.
+
+See [docs/shared-repository-architecture.md](docs/shared-repository-architecture.md) for the audit, dependency graph, storage independence, and the test matrix.
 
 ## Development setup
 
@@ -603,7 +633,7 @@ The Notes and Categories tabs are native stacks (`apps/mobile/src/navigation/Not
 - **Notes** — `NotesListScreen` (recent-first list with plain-text previews and category chips) → `NoteDetailScreen` (native **Markdown editor** — see below — with category picker, backlinks/outgoing links, and delete). New notes are created from a floating action button.
 - **Markdown editing (Option B, shipped)** — the detail screen embeds `MarkdownEditView` (`apps/mobile/src/components/`): raw multiline `TextInput`, formatting toolbar (bold/italic/code/heading/link as pure string transforms), `[[` wiki-link suggestions from the shared ranking helper, and an edit ⇄ **preview** toggle rendered by the shared `@bigmind/markdown` tokenizer (`MarkdownText`). `TODO_LIST` notes switch to a native `TodoListView` over the shared `TodoRepository`. See the [Mobile Editor Evaluation](docs/mobile-editor.md) — Fases 1–2 shipped.
 - **Categories** — `CategoriesListScreen` (tree view built with `buildCategoryTree` from the shared domain) → `CategoryDetailScreen` (rename, icon, add subcategories, delete with the shared guards, and the list of notes in the category — tapping one jumps to the note detail).
-- All editing goes through the **shared repositories** (`@bigmind/features`): `NoteRepository`, `CategoryRepository`, `LinkRepository`, and `TodoRepository` are the exact same classes the web app uses, backed by the mobile `StorageAdapter` (in-memory placeholder). Outbox coalescing, title/category normalization, cycle and delete guards, and wiki-link maintenance are therefore shared — nothing is reimplemented on mobile.
+- All editing goes through the **shared repositories** (`@bigmind/features`): `NoteRepository`, `CategoryRepository`, `LinkRepository`, `TodoRepository`, plus `RemindersRepository`, `NotificationsRepository`, and `ConflictRepository` for the sync-managed entities — the exact same classes the web app uses, backed by the mobile `StorageAdapter` (SQLite via the storage provider; memory in tests). Outbox coalescing, title/category normalization, cycle and delete guards, workspace scoping, and wiki-link maintenance are therefore shared — nothing is reimplemented on mobile.
 - Shared contracts are reused on-device too: the note editor validates the assembled record with `noteDataSchema` before saving; todo items sync through `todoItemDataSchema`.
 
 ## Reminders & Agenda

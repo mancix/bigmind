@@ -18,9 +18,9 @@ import type {
  *
  * - Web: `DexieStorageAdapter` (apps/web/src/storage/dexie-storage-adapter.ts)
  *   wraps IndexedDB via Dexie.
- * - Mobile: the in-memory adapter below is the bootstrap placeholder; the
- *   future `SqliteStorageAdapter` (expo-sqlite) will implement the same
- *   interface (see docs/mobile-architecture.md).
+ * - Mobile: `SqliteStorageAdapter` (libs/storage/src/sqlite-storage-adapter.ts)
+ *   over expo-sqlite (see docs/storage-architecture.md).
+ * - Tests/bootstrap: `MemoryStorageAdapter` in this file.
  *
  * Capabilities exposed by the adapter: notes, categories, reminders, links
  * (noteLinks + noteAliases), conflicts, and the sync outbox, plus the
@@ -134,14 +134,12 @@ export interface StorageAdapter {
 }
 
 /**
- * Create a purely in-memory implementation of `StorageAdapter`.
- *
- * Used by the mobile bootstrap until the expo-sqlite adapter lands, and handy
- * for tests that need a real (but transient) database. It implements the same
- * query algebra (where/orderBy/filter) and change hooks as the Dexie adapter.
+ * Purely in-memory implementation of `StorageAdapter` (see
+ * {@link MemoryStorageAdapter}). It implements the same query algebra
+ * (where/orderBy/filter) and change hooks as the Dexie and SQLite adapters,
+ * and is the default implementation used by tests.
  */
-export function createInMemoryStorage(): StorageAdapter {
-  type HookEvent = 'creating' | 'updating' | 'deleting';
+type HookEvent = 'creating' | 'updating' | 'deleting';
 
   const keyParts = (index: string): string[] =>
     index.startsWith('[') && index.endsWith(']')
@@ -429,57 +427,62 @@ export function createInMemoryStorage(): StorageAdapter {
     }
   }
 
-  const notes = new MemoryTable<NoteRecord>();
-  const categories = new MemoryTable<CategoryRecord>();
-  const noteLinks = new MemoryTable<NoteLinkRecord>();
-  const noteAliases = new MemoryTable<NoteAliasRecord>();
-  const todoItems = new MemoryTable<TodoItemRecord>();
-  const reminders = new MemoryTable<ReminderRecord>();
-  const notifications = new MemoryTable<NotificationRecord>();
-  const outbox = new MemoryTable<OutboxRecord>();
-  const conflicts = new MemoryTable<ConflictRecord>();
-  const syncState = new MemoryKeyValueTable<SyncStateRecord>();
+export class MemoryStorageAdapter implements StorageAdapter {
+  readonly notes = new MemoryTable<NoteRecord>();
+  readonly categories = new MemoryTable<CategoryRecord>();
+  readonly noteLinks = new MemoryTable<NoteLinkRecord>();
+  readonly noteAliases = new MemoryTable<NoteAliasRecord>();
+  readonly todoItems = new MemoryTable<TodoItemRecord>();
+  readonly reminders = new MemoryTable<ReminderRecord>();
+  readonly notifications = new MemoryTable<NotificationRecord>();
+  readonly outbox = new MemoryTable<OutboxRecord>();
+  readonly conflicts = new MemoryTable<ConflictRecord>();
+  readonly syncState = new MemoryKeyValueTable<SyncStateRecord>();
 
-  const allTables: Array<{ clear(): Promise<void> }> = [
-    notes,
-    categories,
-    noteLinks,
-    noteAliases,
-    todoItems,
-    reminders,
-    notifications,
-    outbox,
-    conflicts,
-    syncState,
+  private readonly allTables: Array<{ clear(): Promise<void> }> = [
+    this.notes,
+    this.categories,
+    this.noteLinks,
+    this.noteAliases,
+    this.todoItems,
+    this.reminders,
+    this.notifications,
+    this.outbox,
+    this.conflicts,
+    this.syncState,
   ];
 
-  return {
-    notes,
-    categories,
-    noteLinks,
-    noteAliases,
-    todoItems,
-    reminders,
-    notifications,
-    outbox,
-    conflicts,
-    syncState,
-    transaction: async <TResult>(
-      callback: () => Promise<TResult>,
-    ): Promise<TResult> => callback(),
-    clearAll: async () => {
-      for (const table of allTables) {
-        await table.clear();
-      }
-    },
-    open: () => Promise.resolve(),
-    close: () => {
-      /* in-memory: nothing to close */
-    },
-    delete: async () => {
-      for (const table of allTables) {
-        await table.clear();
-      }
-    },
-  };
+  transaction<TResult>(callback: () => Promise<TResult>): Promise<TResult> {
+    return callback();
+  }
+
+  async clearAll(): Promise<void> {
+    for (const table of this.allTables) {
+      await table.clear();
+    }
+  }
+
+  open(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  close(): void {
+    /* in-memory: nothing to close */
+  }
+
+  async delete(): Promise<void> {
+    for (const table of this.allTables) {
+      await table.clear();
+    }
+  }
+}
+
+/**
+ * Create a purely in-memory implementation of `StorageAdapter`.
+ *
+ * Backed by {@link MemoryStorageAdapter}; kept as a convenience factory for
+ * repository test harnesses and the mobile bootstrap placeholder.
+ */
+export function createInMemoryStorage(): StorageAdapter {
+  return new MemoryStorageAdapter();
 }

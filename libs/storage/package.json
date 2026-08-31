@@ -14,6 +14,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./node-sqlite-driver": {
+      "@bigmind/source": "./src/node-sqlite-driver.ts",
+      "types": "./dist/node-sqlite-driver.d.ts",
+      "import": "./dist/node-sqlite-driver.js",
+      "default": "./dist/node-sqlite-driver.js"
+    },
     "./package.json": "./package.json"
   },
   "nx": {

@@ -1,3 +1,23 @@
+// The storage provider defaults to the SQLite engine in production. In tests
+// the shared `MemoryStorageAdapter` is the default implementation (fast,
+// deterministic, no native module); `babel-preset-expo` inlines this value at
+// transform time, and it is set before any test module loads.
+process.env.EXPO_PUBLIC_STORAGE_ENGINE = 'memory';
+
+// expo-sqlite is a native module: the memory engine never calls it, but the
+// storage provider imports the driver factory, so the import must resolve.
+// The mock throws if a test somehow opts into the SQLite engine, surfacing
+// the misconfiguration instead of silently passing.
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: () => {
+    throw new Error(
+      'expo-sqlite is unavailable in tests; EXPO_PUBLIC_STORAGE_ENGINE must stay "memory" (SqliteStorageAdapter is covered by libs/storage via the node:sqlite driver).',
+    );
+  },
+}));
+
+export {};
+
 jest.mock('expo/src/winter/ImportMetaRegistry', () => ({
   ImportMetaRegistry: {
     get url() {

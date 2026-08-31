@@ -1,20 +1,59 @@
-import { createInMemoryStorage, type StorageAdapter } from '@bigmind/storage';
+import {
+  createInMemoryStorage,
+  createSqliteStorageAdapter,
+  type StorageAdapter,
+} from '@bigmind/storage';
+
+import { createExpoSqliteDriver } from './expo-sqlite-driver';
 
 /**
- * Mobile storage adapter.
+ * Mobile storage provider (dependency injection).
  *
- * This is a bootstrapping placeholder: it uses the shared
- * `createInMemoryStorage()` from `@bigmind/storage` so the app wires up the
- * `StorageAdapter` abstraction end-to-end (and tests work in CI) before the
- * real adapter lands.
+ * Switches the `StorageAdapter` implementation WITHOUT touching repository
+ * code: notes/categories/links/todos/outbox/sync-state repositories and the
+ * sync engine all receive whatever adapter this provider returns.
  *
- * Migration path (see docs/mobile-architecture.md):
- * 1. Implement the shared `StorageAdapter` contract on top of expo-sqlite as
- *    `SqliteStorageAdapter` (port the web Dexie schema from
- *    `apps/web/src/storage/database.ts`).
- * 2. Swap this singleton for the SQLite-backed adapter.
- * 3. Reuse the shared @bigmind/sync engine against the new adapter.
+ * Engines:
+ * - `sqlite` (default) — `SqliteStorageAdapter` over expo-sqlite. Fast,
+ *   transactional, and persistent across app restarts / device reboots, which
+ *   is the offline-first requirement.
+ * - `memory` — `MemoryStorageAdapter`; used by tests (jest sets
+ *   `EXPO_PUBLIC_STORAGE_ENGINE=memory` in `src/test-setup.ts`) and as an
+ *   emergency override.
+ *
+ * Override at runtime with `EXPO_PUBLIC_STORAGE_ENGINE=memory` (Expo inlines
+ * it at bundle time) or by passing `{ engine }` explicitly.
  */
-export const mobileStorage: StorageAdapter = createInMemoryStorage();
+export type MobileStorageEngine = 'memory' | 'sqlite';
+
+/** Default on-device database name (Expo SQLite). */
+export const DEFAULT_DATABASE_NAME = 'bigmind.db';
+
+export interface MobileStorageProviderOptions {
+  engine?: MobileStorageEngine;
+  databaseName?: string;
+}
+
+export function createMobileStorageProvider(
+  options: MobileStorageProviderOptions = {},
+): StorageAdapter {
+  const engine: MobileStorageEngine =
+    options.engine ??
+    (process.env.EXPO_PUBLIC_STORAGE_ENGINE === 'memory' ? 'memory' : 'sqlite');
+
+  if (engine === 'memory') {
+    return createInMemoryStorage();
+  }
+  return createSqliteStorageAdapter(
+    createExpoSqliteDriver(options.databaseName ?? DEFAULT_DATABASE_NAME),
+  );
+}
+
+/**
+ * The application-wide storage singleton. Constructed once at startup;
+ * repositories and the sync engine depend on this single instance so the
+ * outbox, conflicts and local data never diverge.
+ */
+export const mobileStorage: StorageAdapter = createMobileStorageProvider();
 
 export { mobileStorage as storage };

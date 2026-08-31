@@ -15,6 +15,29 @@
       },
       "outputs": ["{projectRoot}/dist"]
     },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "cwd": "apps/mobile",
+        "command": "expo start",
+        "args": ["--clear"]
+      },
+      "configurations": {
+        "go": {
+          "command": "expo start --go",
+          "args": ["--clear"]
+        },
+        "android": {
+          "command": "expo start --android",
+          "args": ["--clear"]
+        },
+        "dev-client": {
+          "command": "expo start --dev-client",
+          "args": ["--clear"]
+        }
+      }
+    },
     "export": {
       "dependsOn": ["^build"]
     },

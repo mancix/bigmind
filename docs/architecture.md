@@ -175,9 +175,9 @@ Client-facing logic that must work identically on the web PWA and the mobile app
 - `@bigmind/domain` — pure domain types and rules.
 - `@bigmind/contracts` — Zod schemas and ts-rest API contracts.
 - `@bigmind/sync` — the shared synchronization engine plus the sync protocol types (`SyncOperation`, `RemoteChange`, `PushOperationResult`, `SyncStatus`), transports (`SyncTransport`, HTTP, fake), repositories (outbox, sync state), and the platform abstractions for connectivity, storage, and background sync.
-- `@bigmind/storage` — local record types plus the platform-independent `StorageAdapter` abstraction. Web implements it with `DexieStorageAdapter` (IndexedDB); mobile uses the shared in-memory adapter as a placeholder and will ship a `SqliteStorageAdapter` (expo-sqlite).
+- `@bigmind/storage` — local record types plus the platform-independent `StorageAdapter` abstraction. Web implements it with `DexieStorageAdapter` (IndexedDB); mobile ships `SqliteStorageAdapter` (expo-sqlite driver, see [Storage Architecture](storage-architecture.md)).
 - `@bigmind/auth` — the `AuthStore` token-refresh / offline-auth state machine with an injectable `TokenStorage` (localStorage on web, SecureStore on mobile).
-- `@bigmind/features` — the shared note, category, wiki-link, and todo repositories (`NoteRepository`, `CategoryRepository`, `LinkRepository`, `TodoRepository`), extracted from the web app and used by both platforms.
+- `@bigmind/features` — the **shared repository layer**: `NoteRepository`, `CategoryRepository`, `LinkRepository`, `TodoRepository`, `RemindersRepository`, `NotificationsRepository`, and `ConflictRepository`, plus the DI provider (`createRepositoryProvider`), the `WorkspaceContext` abstraction (workspace scoping with localStorage/AsyncStorage injected by the platform), and `generateId()`. Every repository depends only on `StorageAdapter` + the sync interfaces — nothing platform-specific. See [Shared Repository Architecture](shared-repository-architecture.md).
 - `@bigmind/markdown` — the single source for Markdown handling: block/inline tokenizer, the canonical HTML renderer (`renderMarkdown`, ported from the web's `render-markdown.ts`), wiki-link extraction/normalization, note-preview generation, suggestion ranking, and formatting transforms. The web editor, the web category-description renderer (`apps/web/src/features/categories/render-markdown.ts` is now a re-export), and the mobile editor (Option B: native editor + shared preview renderer — see [Mobile Editor Evaluation](mobile-editor.md)) all consume it, so web and mobile cannot diverge.
 
 ### Storage abstraction
@@ -196,14 +196,15 @@ apps/web/src/storage
   index.ts                  exports `storage: StorageAdapter` (the only
                             import application code needs)
 
-apps/mobile/src/storage     future: SqliteStorageAdapter (expo-sqlite)
+apps/mobile/src/storage     SqliteStorageAdapter + expo-sqlite driver
+                            (libs/storage); memory adapter in tests
 ```
 
 The adapter exposes the six core capabilities — **notes, categories, reminders, links (noteLinks + noteAliases), conflicts, outbox** — plus the remaining tables clients use (todo items, notifications, sync state). Its query surface mirrors the Dexie subset BigMind uses (`get`/`put`/`add`/`update`/`bulk*`, `where().equals()/anyOf()`, `orderBy()/reverse()/filter()/sortBy()`, `modify()`, change `hook`s) so existing behavior is preserved exactly while remaining implementable on SQLite.
 
 - `DexieStorageAdapter` (web) wraps the unchanged `BigMindDatabase`, including transactions, lifecycle (`open`/`close`/`delete`), and hook events (the search index subscribes to them).
-- `createInMemoryStorage()` (shared) is the mobile placeholder and a real test double.
-- `SqliteStorageAdapter` (planned) will implement the same contract on expo-sqlite inside the mobile app; no mobile SQLite code ships yet.
+- `createInMemoryStorage()` (shared) is a real test double used by the repository suites and the mobile tests.
+- `SqliteStorageAdapter` (shared, `libs/storage`) implements the same contract over a tiny `SqliteDriver` interface; the mobile storage provider wires the expo-sqlite driver on device and the node `node:sqlite` driver in CI.
 
 ### Synchronization engine (shared)
 
@@ -216,7 +217,7 @@ SyncEngine (libs/sync/src/sync-engine.ts)
     storage             StorageAdapter (entity tables + transactions)
     outbox              SyncOutbox  (shared OutboxRepository over StorageAdapter)
     syncState           SyncStateStore (shared SyncStateRepository)
-    conflicts           ConflictSink (web: ConflictRepository · mobile: storage.conflicts sink)
+    conflicts           ConflictSink (shared ConflictRepository on both platforms)
     buildConflictSnapshots  shared ConflictService
     getAuthState        () => AuthState (web/mobile AuthStore)
   options:
@@ -229,7 +230,7 @@ Platform abstractions in `@bigmind/sync` keep browser/mobile-specific triggers o
 - **Storage** — the engine depends on the `StorageAdapter` abstraction; both platforms inject their own implementation.
 - **Background sync** — `createSyncScheduler()` owns the debounce/periodic timing and the local-change request bus (`requestBackgroundSync`). Web maps visibility/online/auth events through it (`SyncConnectivity`), mobile maps AppState + NetInfo events through it (`apps/mobile/src/sync/supervisor.ts`).
 
-The engine, outbox repository, sync-state repository, fake/HTTP transports, and conflict classifier are the exact same code on both platforms: web wires them in `apps/web/src/sync/sync-service.ts`, mobile in `apps/mobile/src/sync/sync-service.ts`.
+The engine, outbox repository, sync-state repository, fake/HTTP transports, conflict classifier, and the `ConflictRepository` conflict sink are the exact same code on both platforms: web wires them in `apps/web/src/sync/sync-service.ts`, mobile in `apps/mobile/src/sync/sync-service.ts` (the mobile conflict sink is the shared `ConflictRepository` — the standalone `storage.conflicts` sink is gone).
 
 ### Auth
 
@@ -266,6 +267,18 @@ apps/web/src/features/workspaces/
 
 The frontend sends an `X-Workspace-Id` header on every sync and search request. The backend `WorkspaceGuard` reads this header, validates the user's membership via `getUserRole`, and sets `req.workspaceId`. If the header is absent, the guard falls back to the user's first workspace.
 
+## Client-side storage (shared contract)
+
+Both clients persist local records through the **same `StorageAdapter` contract** (`@bigmind/storage`): notes, categories, links (noteLinks + noteAliases), todos, reminders, notifications, conflicts, and the sync outbox, plus the sync-state key-value table. Repositories (`@bigmind/features`, `@bigmind/sync`) only ever see this abstraction.
+
+| Platform | Implementation | Backing store |
+| -------- | -------------- | ------------- |
+| Web PWA  | `DexieStorageAdapter` (`apps/web/src/storage/`) | IndexedDB via Dexie |
+| Mobile   | `SqliteStorageAdapter` (`libs/storage`) | SQLite — expo-sqlite on device, node:sqlite in CI |
+| Tests    | `MemoryStorageAdapter` (`libs/storage`) | In-memory maps |
+
+`SqliteStorageAdapter` runs against a tiny `SqliteDriver` contract; versioned migrations apply the initial schema (mirroring Dexie v11) and future upgrades atomically, and the storage provider in `apps/mobile/src/storage/` switches engines without touching repository code. The mobile app defaults to SQLite (offline-first persistence: restarts, reboots, long offline periods); tests default to memory. See [Storage Architecture](storage-architecture.md) for the schema, migration strategy, parity testing, and the roadmap (encrypted storage, workspace isolation, attachments).
+
 ## Mobile note editing (planned)
 
 The technical evaluation and recommendation for the mobile note editor live in [Mobile Editor Evaluation](mobile-editor.md). Decision summary: keep Markdown as the source of truth, edit with a native `TextInput` + live preview on a **shared Markdown tokenizer/renderer** (`@bigmind/markdown` planned, Phase 1), keep structured features (todo lists, category picker, reminders) as native components over the shared `@bigmind/features` repositories, and treat a WebView+Milkdown port only as a documented escape hatch. No editor code has been shipped yet.
@@ -283,8 +296,9 @@ BigMind also ships a React Native application in `apps/mobile` (Expo SDK 55, And
 │                                                             │
 │  Providers: SafeAreaProvider → AuthProvider (shared AuthStore│
 │  API URL: EXPO_PUBLIC_API_URL · Android emulator: 10.0.2.2  │
-│  Storage: shared StorageAdapter (in-memory placeholder)     │
-└──────────────────────────────┬───────────────────────────────┘
+│  Storage: shared StorageAdapter → SqliteStorageAdapter   │
+│           (expo-sqlite; memory in tests)                │
+└──────────────────────────────┬───────────────────────────┘
                                │ @bigmind/domain · contracts ·
                                │ sync · storage · auth (dist)
 ```
@@ -292,8 +306,8 @@ BigMind also ships a React Native application in `apps/mobile` (Expo SDK 55, And
 Key properties:
 
 - **Maximum sharing**: all domain models, zod schemas, sync protocol types, and the auth state machine are consumed from `@bigmind/*` libs — nothing is duplicated in `apps/mobile`.
-- **Storage**: the mobile app consumes the shared `StorageAdapter` abstraction (`@bigmind/storage`). The web implementation (`DexieStorageAdapter`) wraps the existing Dexie schema; the mobile adapter (`SqliteStorageAdapter` on expo-sqlite) is the next step — see [Mobile Architecture](mobile-architecture.md).
-- **Sync**: the mobile app runs the SAME engine as the web app (`@bigmind/sync`), wired over the mobile storage adapter, auth store, and HTTP transport (`apps/mobile/src/sync/sync-service.ts`), with AppState + NetInfo background-sync supervision (`supervisor.ts`). Sync is activated once the storage adapter is no longer in-memory.
+- **Storage**: the mobile app consumes the shared `StorageAdapter` abstraction (`@bigmind/storage`). The web implementation (`DexieStorageAdapter`) wraps the existing Dexie schema; the mobile implementation (`SqliteStorageAdapter` over expo-sqlite, with the memory adapter as the jest default) is wired through the storage provider (`apps/mobile/src/storage/index.ts`). See [Storage Architecture](storage-architecture.md) and [Mobile Architecture](mobile-architecture.md).
+- **Sync**: the mobile app runs the SAME engine as the web app (`@bigmind/sync`), wired over the mobile storage adapter, auth store, and HTTP transport (`apps/mobile/src/sync/sync-service.ts`), with AppState + NetInfo background-sync supervision (`supervisor.ts`).
 - **Monorepo wiring**: `@nx/expo` infers targets; the `build` target is overridden locally to run `expo export --platform android` so CI can validate the Android JS bundle without EAS credentials. All shared libs must be built before Metro runs (`mobile:build` depends on `^build`).
 
 See [Mobile Architecture](mobile-architecture.md) for the full platform breakdown, navigation structure, storage abstraction design, and known platform deltas.

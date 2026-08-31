@@ -204,3 +204,29 @@ Migrations are numbered sequentially (0000–0009) and stored in `apps/api/drizz
 | 9 | `0009_add_workspace_description` | Add description to workspaces, created_at to members |
 | 10 | `0010_change_log_workspace_id` | Replace text owner_id with uuid workspace_id FK on change_log |
 | 11 | `0011_workspace_invitations` | workspace_invitations table for workspace collaboration |
+## Client-side storage (on-device)
+
+The **server** schema above is synchronized with by clients; the **client-side**
+schema lives entirely on the device and is separate. Both web (IndexedDB) and
+mobile (SQLite) persist local records through the shared `StorageAdapter`
+contract from `@bigmind/storage`.
+
+| Table (SQLite)     | Key  | Content                                   |
+| ------------------- | ---- | ----------------------------------------- |
+| `notes`             | `id` | Note record + index columns (`title`, `category_id`, `template_type`, `updated_at`, `deleted_at`, `sync_status`) |
+| `categories`        | `id` | Category record (`parent_id`, `position`, `updated_at`, `deleted_at`, `sync_status`) |
+| `note_links`        | `id` | Resolved wiki links (`source_note_id`, `target_note_id`, `sync_status`) + compound `[source_note_id+target_note_id]` |
+| `note_aliases`      | `id` | Rename aliases (`note_id`, `normalized_alias`) + compound `[note_id+normalized_alias]` |
+| `todo_items`        | `id` | Todo items (`todo_list_id`, `sync_status`) |
+| `reminders`         | `id` | Reminders (`workspace_id`, `due_at`, `completed`, `sync_status`) |
+| `notifications`     | `id` | Notifications (`workspace_id`, `type`, `read`, `created_at`, `sync_status`) |
+| `outbox`            | `id` | Pending sync operations (`entity_id`, `entity_type`, `created_at`, `status`, `next_retry_at`) + compound `[entity_id+status]` |
+| `conflicts`         | `id` | Conflict records + snapshots (`entity_id`, `entity_type`, `status`, `created_at`) |
+| `sync_state`        | `key`| Key-value sync metadata (cursor, last sync timestamp) |
+| `schema_meta`       | `id` | Applied schema version (migration bookkeeping) |
+
+Each record is stored as JSON in the `data` column (single source of truth)
+with duplicated, index-backed columns for the query surface — adding a field
+never requires a migration unless it is queried. Migrations are versioned and
+applied transactionally. See [Storage Architecture](storage-architecture.md)
+for the full design, parity guarantees, and the encrypted-storage roadmap.

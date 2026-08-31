@@ -22,13 +22,16 @@ export default defineConfig(() => ({
     lib: {
       entry: {
         index: 'src/index.ts',
+        // Deliberately separate: bundles `node:sqlite`, which must never be
+        // resolved by Metro/Hermes (see node-sqlite-driver.ts).
+        'node-sqlite-driver': 'src/node-sqlite-driver.ts',
       },
       name: 'storage',
       fileName: (_, entryName) => `${entryName}.js`,
       formats: ['es' as const],
     },
     rolldownOptions: {
-      external: ['@bigmind/domain', '@bigmind/sync'],
+      external: ['@bigmind/domain', '@bigmind/sync', /^node:/],
     },
   },
   test: {

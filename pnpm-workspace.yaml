@@ -11,3 +11,6 @@ allowBuilds:
   less: true
   nx: true
   unrs-resolver: true
+minimumReleaseAgeExclude:
+  - expo-modules-core@55.0.26
+  - expo@55.0.31

@@ -13,7 +13,7 @@ import { OutboxRepository } from '../../sync/outbox-repository';
 import type { RemoteChange } from '../../sync/sync.types';
 
 const outbox = new OutboxRepository(storage);
-const conflicts = new ConflictRepository(outbox);
+const conflicts = new ConflictRepository(storage, outbox);
 const categories = new CategoryRepository(storage, outbox);
 
 beforeEach(async () => {
@@ -506,7 +506,7 @@ describe('conflict counts and reloading', () => {
     storage.close();
     await storage.open();
 
-    const reloaded = new ConflictRepository(outbox);
+    const reloaded = new ConflictRepository(storage, outbox);
     expect(await reloaded.countOpen()).toBe(1);
     const stored = await reloaded.listOpen();
     expect(stored[0]?.entityId).toBe(note.id);
