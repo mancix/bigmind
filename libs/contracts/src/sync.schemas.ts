@@ -23,6 +23,8 @@ export const noteDataSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   deletedAt: z.string().datetime().optional(),
+  // Archive preparation: reserved optional field (nothing sets it yet).
+  archivedAt: z.string().datetime().optional(),
   version: z.number().int().nonnegative(),
 });
 

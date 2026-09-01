@@ -58,6 +58,8 @@ See [docs/storage-architecture.md](docs/storage-architecture.md) for the adapter
 ### Synchronization
 
 - Platform-independent sync engine (`@bigmind/sync`) shared by the web PWA and the mobile app; only connectivity, storage, and background-sync triggers are platform-specific.
+
+See [docs/synchronization-architecture.md](docs/synchronization-architecture.md) for the shared sync core, the `Connectivity` / `StorageAdapter` / auth abstractions, connectivity layers (web `navigator.onLine` + events, mobile NetInfo), authentication integration, sync status, and conflict handling.
 - Configurable fake or HTTP synchronization transport (HTTP works on the web and on Hermes).
 - Local outbox for note, category, and link create/update/delete operations.
 - Coalescing of pending operations to avoid unnecessary sync traffic.
@@ -618,7 +620,11 @@ An Android-first React Native app lives in `apps/mobile` (Expo SDK 55, iOS-compa
 
 #### Mobile authentication (login / register)
 
-While signed out the app shows a native-stack `AuthNavigator` with **Login** and **Register** screens; once authenticated the `RootGate` swaps to the main bottom tabs (`apps/mobile/src/app/App.tsx`).
+While signed out the app shows a native-stack `AuthNavigator` with **Login** and **Register** screens; once authenticated the `RootGate` swaps to the main bottom tabs (`apps/mobile/src/app/App.tsx`). See [docs/mobile-authentication.md](docs/mobile-authentication.md) for the full mobile auth experience: SecureStore token persistence, the offline `offline_authenticated` startup path, the `auth_required` behavior, and the auth lifecycle.
+
+#### Mobile workspaces
+
+The mobile app includes a **Workspaces** tab with the same workspace experience as the web sidebar switcher + settings: workspace list (name, role, personal/shared type), switching, creation, members, and invitations — all reusing the shared contracts (`@bigmind/contracts`), the shared repositories (`@bigmind/features`), and the mobile workspace provider (`apps/mobile/src/features/workspaces/`). Owner-only actions (invite, roles, remove, delete) are gated in the UI and enforced by the API (`403`/`409`); the workspace list and current workspace stay available offline via a cached list, and sync resumes automatically when connectivity returns. See [docs/mobile-workspaces.md](docs/mobile-workspaces.md) for workspace management, roles, switching, and offline behavior.
 
 - Both screens reuse the **shared ts-rest zod contracts** for validation and response handling (`loginRequestSchema`, `registerRequestSchema`, `authResponseSchema`, `errorResponseSchema` — see `apps/mobile/src/features/auth/auth-api.ts`). Request and response shapes are validated on-device before any token is stored.
 - Tokens (access, refresh, user) are persisted in **Expo SecureStore** (Keychain on iOS, encrypted storage on Android) through the shared `AuthStore` — **AsyncStorage is never used for tokens** (it remains only for non-sensitive preferences such as the selected workspace).
@@ -628,11 +634,11 @@ While signed out the app shows a native-stack `AuthNavigator` with **Login** and
 
 #### Notes & Categories (mobile)
 
-The Notes and Categories tabs are native stacks (`apps/mobile/src/navigation/NotesNavigator.tsx`, `CategoriesNavigator.tsx`): a list screen pushing a detail screen with native transitions.
+The Notes and Categories tabs are native stacks (`apps/mobile/src/navigation/NotesNavigator.tsx`, `CategoriesNavigator.tsx`): a list screen pushing a detail screen with native transitions. See [docs/mobile-notes.md](docs/mobile-notes.md) for the mobile notes architecture: navigation structure (with `bigmind://` deep links), offline title+content search, Updated/A–Z sorting, pagination-ready `FlatList`, sync status pill, and the archive/trash preparation.
 
 - **Notes** — `NotesListScreen` (recent-first list with plain-text previews and category chips) → `NoteDetailScreen` (native **Markdown editor** — see below — with category picker, backlinks/outgoing links, and delete). New notes are created from a floating action button.
 - **Markdown editing (Option B, shipped)** — the detail screen embeds `MarkdownEditView` (`apps/mobile/src/components/`): raw multiline `TextInput`, formatting toolbar (bold/italic/code/heading/link as pure string transforms), `[[` wiki-link suggestions from the shared ranking helper, and an edit ⇄ **preview** toggle rendered by the shared `@bigmind/markdown` tokenizer (`MarkdownText`). `TODO_LIST` notes switch to a native `TodoListView` over the shared `TodoRepository`. See the [Mobile Editor Evaluation](docs/mobile-editor.md) — Fases 1–2 shipped.
-- **Categories** — `CategoriesListScreen` (tree view built with `buildCategoryTree` from the shared domain) → `CategoryDetailScreen` (rename, icon, add subcategories, delete with the shared guards, and the list of notes in the category — tapping one jumps to the note detail).
+- **Categories** — `CategoriesListScreen` (tree view built with `buildCategoryTree` from the shared domain; lazy-expandable rows, note counts, hierarchy-aware offline search) → `CategoryDetailScreen` (rename, move, edit Markdown description with shared preview, add subcategories, parent breadcrumb, children navigation, delete with the shared guards, and the list of notes in the category — tapping one jumps to the note detail). See [docs/mobile-categories.md](docs/mobile-categories.md) for the mobile category architecture, hierarchy navigation, and offline management.
 - All editing goes through the **shared repositories** (`@bigmind/features`): `NoteRepository`, `CategoryRepository`, `LinkRepository`, `TodoRepository`, plus `RemindersRepository`, `NotificationsRepository`, and `ConflictRepository` for the sync-managed entities — the exact same classes the web app uses, backed by the mobile `StorageAdapter` (SQLite via the storage provider; memory in tests). Outbox coalescing, title/category normalization, cycle and delete guards, workspace scoping, and wiki-link maintenance are therefore shared — nothing is reimplemented on mobile.
 - Shared contracts are reused on-device too: the note editor validates the assembled record with `noteDataSchema` before saving; todo items sync through `todoItemDataSchema`.
 

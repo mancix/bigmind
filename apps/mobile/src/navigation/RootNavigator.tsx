@@ -7,6 +7,7 @@ import { RemindersScreen } from '../screens/RemindersScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { CategoriesNavigator } from './CategoriesNavigator';
 import { NotesNavigator } from './NotesNavigator';
+import { WorkspacesNavigator } from './WorkspacesNavigator';
 import type { RootTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -15,6 +16,7 @@ const tabIcons: Record<keyof RootTabParamList, string> = {
   Home: '🏠',
   Notes: '📝',
   Categories: '🗂️',
+  Workspaces: '🗄️',
   Reminders: '⏰',
   Settings: '⚙️',
 };
@@ -46,6 +48,11 @@ export function RootNavigator() {
       <Tab.Screen
         name="Categories"
         component={CategoriesNavigator}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen
+        name="Workspaces"
+        component={WorkspacesNavigator}
         options={{ headerShown: false }}
       />
       <Tab.Screen name="Reminders" component={RemindersScreen} />

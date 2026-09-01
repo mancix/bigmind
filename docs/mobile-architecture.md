@@ -123,12 +123,16 @@ apps/mobile/
       HomeScreen.tsx        Overview + shared-code showcase (domain/contracts/storage)
       RemindersScreen.tsx   Placeholder (shared reminder rules)
       SettingsScreen.tsx    Auth state, API URL, local-data controls
-      notes/
+      notes/                Notes stack (see docs/mobile-notes.md): list with
+                           search/sort/pagination + sync pill;
+                           detail with MarkdownEditView, links, delete
         NotesListScreen.tsx   Recent-first note list (shared NoteRepository)
         NoteDetailScreen.tsx  Edit title/content/category, delete, contract-validated save
-      categories/
+      categories/           Categories stack (see docs/mobile-categories.md):
+                           lazy tree + note counts + hierarchy-aware search;
+                           detail with breadcrumb, move, markdown description
         CategoriesListScreen.tsx  Category tree (domain buildCategoryTree)
-        CategoryDetailScreen.tsx  Rename/icon/subcategories/delete guards + notes in category
+        CategoryDetailScreen.tsx  Rename/move/description/delete guards + notes
     components/             Screen + Card + AuthLayout/AuthField scaffolds,
                            MarkdownText (shared tokenizer preview),
                            MarkdownEditView (toolbar + wiki suggestions +
@@ -138,7 +142,9 @@ apps/mobile/
                            auth-api (shared contracts), auth-provider, auth-flow tests
       data/repositories.ts  Shared NoteRepository/CategoryRepository + outbox/sync-state
                            wired over the mobile storage (single source for sync + UI)
-      workspaces/           workspace-store (AsyncStorage-selected workspace id)
+      workspaces/           workspace-store (AsyncStorage-selected workspace id),
+                           workspace-client (shared contracts), workspace-context
+                           (list/switch/create, offline-cached), workspace-roles
     storage/                Storage provider + adapters (SqliteStorageAdapter is shared in
                            `libs/storage`; this folder wires it to expo-sqlite and exposes
                            the engine switch used by tests) — see storage-architecture.md
@@ -153,7 +159,7 @@ apps/mobile/
 
 ## Authentication flow (mobile)
 
-While signed out, the app renders the shared `AuthNavigator` (React Navigation native stack with **Login** and **Register** screens) instead of the main tabs. The `RootGate` in `src/app/App.tsx` switches between them based on the shared `AuthStore` state.
+While signed out, the app renders the shared `AuthNavigator` (React Navigation native stack with **Login** and **Register** screens) instead of the main tabs. The `RootGate` in `src/app/App.tsx` switches between them based on the shared `AuthStore` state. The full mobile auth experience — SecureStore persistence, the `offline_authenticated` startup path, the `auth_required` behavior, and the auth lifecycle — is documented in [Mobile Authentication](mobile-authentication.md).
 
 - Both screens reuse the **shared ts-rest zod contracts** (`loginRequestSchema` / `registerRequestSchema`) for client-side validation and `authResponseSchema` / `errorResponseSchema` for response handling (`src/features/auth/auth-api.ts`).
 - On success the returned token pair is stored through the shared `AuthStore` (four-state offline model, periodic refresh) into **Expo SecureStore**.

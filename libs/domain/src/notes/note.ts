@@ -14,6 +14,12 @@ export interface Note {
   updatedAt: IsoTimestamp;
   version: EntityVersion;
   deletedAt?: IsoTimestamp;
+  /**
+   * Archive preparation: reserved for the future archive/trash feature.
+   * Nothing writes this field yet; it is additive so repositories and the
+   * sync protocol can carry it without a migration when archive ships.
+   */
+  archivedAt?: IsoTimestamp;
 }
 
 export type NoteContentChanges = Partial<

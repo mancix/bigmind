@@ -59,6 +59,9 @@ BigMind is a local-first personal knowledge base built as an Nx monorepo with a 
 
 ## Workspace model
 
+> The mobile workspace experience — list, switch, create, members, invitations,
+> roles, and offline behavior — is documented in [Mobile Workspace Management](mobile-workspaces.md).
+
 ### Database tables
 
 **`workspaces`**
@@ -230,7 +233,7 @@ Platform abstractions in `@bigmind/sync` keep browser/mobile-specific triggers o
 - **Storage** — the engine depends on the `StorageAdapter` abstraction; both platforms inject their own implementation.
 - **Background sync** — `createSyncScheduler()` owns the debounce/periodic timing and the local-change request bus (`requestBackgroundSync`). Web maps visibility/online/auth events through it (`SyncConnectivity`), mobile maps AppState + NetInfo events through it (`apps/mobile/src/sync/supervisor.ts`).
 
-The engine, outbox repository, sync-state repository, fake/HTTP transports, conflict classifier, and the `ConflictRepository` conflict sink are the exact same code on both platforms: web wires them in `apps/web/src/sync/sync-service.ts`, mobile in `apps/mobile/src/sync/sync-service.ts` (the mobile conflict sink is the shared `ConflictRepository` — the standalone `storage.conflicts` sink is gone).
+The engine, outbox repository, sync-state repository, fake/HTTP transports, conflict classifier, and the `ConflictRepository` conflict sink are the exact same code on both platforms: web wires them in `apps/web/src/sync/sync-service.ts`, mobile in `apps/mobile/src/sync/sync-service.ts` (the mobile conflict sink is the shared `ConflictRepository` — the standalone `storage.conflicts` sink is gone). See [Synchronization Architecture](synchronization-architecture.md) for the push/pull flow, connectivity layer, authentication integration, sync status, and future-compatibility (push notifications, background sync, attachments, E2E encryption).
 
 ### Auth
 
@@ -243,6 +246,11 @@ apps/web/src/features/auth/
   register-page.tsx   /register route
   api-url.ts          VITE_API_URL helper
 ```
+
+Web and mobile share the `AuthStore` state machine (`@bigmind/auth`) and the auth
+contracts (`@bigmind/contracts`). Mobile-specific integration — Expo SecureStore
+token storage, the login/register screens, offline startup, and the auth
+lifecycle — is documented in [Mobile Authentication](mobile-authentication.md).
 
 ### Route protection
 
@@ -285,7 +293,11 @@ The technical evaluation and recommendation for the mobile note editor live in [
 
 ## Mobile app (Expo / React Native)
 
-BigMind also ships a React Native application in `apps/mobile` (Expo SDK 55, Android-first, iOS-compatible) that reuses the shared client libraries above. React Navigation provides bottom tabs for **Home**, **Notes**, **Categories**, **Reminders**, and **Settings**.
+BigMind also ships a React Native application in `apps/mobile` (Expo SDK 55, Android-first, iOS-compatible) that reuses the shared client libraries above. React Navigation provides bottom tabs for **Home**, **Notes**, **Categories**, **Workspaces**, **Reminders**, and **Settings**.
+
+The primary notes experience — navigation structure (with `bigmind://` deep links), offline search/sorting, pagination, sync feedback, deletion, and archive preparation — is documented in [Mobile Notes Architecture](mobile-notes.md).
+
+Category management — lazy hierarchical tree, note/subcategory counts, hierarchy-aware offline search, parent breadcrumbs, move, Markdown descriptions, and offline create/edit/delete — is documented in [Mobile Category Architecture](mobile-categories.md).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐

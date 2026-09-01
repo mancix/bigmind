@@ -42,7 +42,7 @@ export const invitationSchema = z.object({
 
 export const listInvitationsResponseSchema = z.array(invitationSchema);
 
-const inviteRequestSchema = z.object({
+export const inviteRequestSchema = z.object({
   email: z.string().email().max(255),
   role: z.enum(['EDITOR', 'VIEWER']),
 });

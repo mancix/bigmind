@@ -1,21 +1,31 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { createNotePreview } from '@bigmind/domain/notes';
 import type { NoteRecord } from '@bigmind/storage';
 
+import { SyncStatusPill } from '../../components/SyncStatusPill';
 import {
   categoryRepository,
   noteRepository,
   subscribeToDataChanges,
 } from '../../features/data/repositories';
+import {
+  buildNoteList,
+  NOTE_PAGE_SIZE,
+  NOTE_SORT_LABELS,
+  NOTE_SORT_MODES,
+  type NoteSortMode,
+} from '../../features/notes/note-list';
 import type { NotesStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
 
@@ -26,7 +36,11 @@ export function NotesListScreen({ navigation }: Props) {
   const [categoryNames, setCategoryNames] = useState<Record<string, string>>(
     {},
   );
+  const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState('');
+  const [sortMode, setSortMode] = useState<NoteSortMode>('updated');
+  const [visibleCount, setVisibleCount] = useState(NOTE_PAGE_SIZE);
 
   const refresh = useCallback(async () => {
     const [list, categories] = await Promise.all([
@@ -39,6 +53,7 @@ export function NotesListScreen({ navigation }: Props) {
         categories.map((category) => [category.id, category.name]),
       ),
     );
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -46,11 +61,27 @@ export function NotesListScreen({ navigation }: Props) {
     return subscribeToDataChanges(() => void refresh());
   }, [refresh]);
 
+  // Reset pagination whenever the search or sort changes.
+  useEffect(() => {
+    setVisibleCount(NOTE_PAGE_SIZE);
+  }, [query, sortMode]);
+
   const pullToRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  // Filter → sort → paginate in pure helpers (fast, offline-safe).
+  const visibleNotes = useMemo(
+    () =>
+      buildNoteList(notes, {
+        query,
+        sortMode,
+        limit: visibleCount,
+      }),
+    [notes, query, sortMode, visibleCount],
+  );
 
   const createNote = async () => {
     const noteId = await noteRepository.create();
@@ -59,62 +90,116 @@ export function NotesListScreen({ navigation }: Props) {
 
   return (
     <View style={styles.screen}>
-      <FlatList
-        data={notes}
-        keyExtractor={(note) => note.id}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void pullToRefresh()}
-          />
-        }
-        contentContainerStyle={[
-          styles.list,
-          notes.length === 0 && styles.listEmpty,
-        ]}
-        ListEmptyComponent={
-          <Text style={styles.empty}>
-            No notes yet — create your first note.
-          </Text>
-        }
-        renderItem={({ item }) => {
-          const categoryName = item.categoryId
-            ? categoryNames[item.categoryId]
-            : undefined;
-          const preview = createNotePreview(item.content);
-          return (
+      <View style={styles.toolbar}>
+        <TextInput
+          style={styles.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search notes (title or content)"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          testID="note-search"
+        />
+        <View style={styles.sortRow}>
+          {NOTE_SORT_MODES.map((mode) => (
             <Pressable
-              style={({ pressed }) => [
-                styles.row,
-                pressed && styles.rowPressed,
-              ]}
-              onPress={() =>
-                navigation.navigate('NoteDetail', { noteId: item.id })
-              }
-              testID={`note-row-${item.id}`}
+              key={mode}
+              testID={`sort-${mode}`}
+              onPress={() => setSortMode(mode)}
+              style={[styles.sortButton, sortMode === mode && styles.sortActive]}
             >
-              <Text style={styles.rowTitle} numberOfLines={1}>
-                {item.title}
+              <Text
+                style={[
+                  styles.sortLabel,
+                  sortMode === mode && styles.sortLabelActive,
+                ]}
+              >
+                {NOTE_SORT_LABELS[mode]}
               </Text>
-              {preview ? (
-                <Text style={styles.rowPreview} numberOfLines={2}>
-                  {preview}
+            </Pressable>
+          ))}
+          <SyncStatusPill />
+        </View>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.muted}>Loading notes...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={visibleNotes}
+          keyExtractor={(note) => note.id}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          windowSize={7}
+          maxToRenderPerBatch={20}
+          updateCellsBatchingPeriod={40}
+          onEndReachedThreshold={0.4}
+          onEndReached={() =>
+            setVisibleCount((count) => count + NOTE_PAGE_SIZE)
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void pullToRefresh()}
+            />
+          }
+          contentContainerStyle={[
+            styles.list,
+            visibleNotes.length === 0 && styles.listEmpty,
+          ]}
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Text style={styles.empty}>
+                {notes.length === 0
+                  ? `No notes yet — tap "${'＋ New note'}" to create one.`
+                  : `No notes match "${query}".`}
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const categoryName = item.categoryId
+              ? categoryNames[item.categoryId]
+              : undefined;
+            const preview = createNotePreview(item.content);
+            return (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.row,
+                  pressed && styles.rowPressed,
+                ]}
+                onPress={() =>
+                  navigation.navigate('NoteDetail', { noteId: item.id })
+                }
+                testID={`note-row-${item.id}`}
+              >
+                <Text style={styles.rowTitle} numberOfLines={1}>
+                  {item.title}
                 </Text>
-              ) : null}
-              <View style={styles.metaRow}>
-                {categoryName ? (
-                  <Text style={styles.rowCategory} numberOfLines={1}>
-                    {categoryName}
+                {preview ? (
+                  <Text style={styles.rowPreview} numberOfLines={2}>
+                    {preview}
                   </Text>
                 ) : null}
-                <Text style={styles.rowMeta}>
-                  {new Date(item.updatedAt).toLocaleDateString()}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
+                <View style={styles.metaRow}>
+                  {categoryName ? (
+                    <Text style={styles.rowCategory} numberOfLines={1}>
+                      {categoryName}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.rowMeta}>
+                    {new Date(item.updatedAt).toLocaleDateString()}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          }}
+        />
+      )}
+
       <Pressable
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         onPress={() => void createNote()}
@@ -131,6 +216,45 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  toolbar: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    color: colors.text,
+    fontSize: typography.body,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  sortButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  sortActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceAlt,
+  },
+  sortLabel: {
+    color: colors.textMuted,
+    fontSize: typography.caption,
+    fontWeight: '600',
+  },
+  sortLabelActive: {
+    color: colors.primary,
+  },
   list: {
     padding: spacing.md,
     gap: spacing.sm,
@@ -138,7 +262,6 @@ const styles = StyleSheet.create({
   },
   listEmpty: {
     flexGrow: 1,
-    justifyContent: 'center',
   },
   empty: {
     color: colors.textMuted,
@@ -181,6 +304,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: typography.caption,
     fontWeight: '600',
+  },
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
+  },
+  muted: {
+    color: colors.textMuted,
+    fontSize: typography.caption,
   },
   fab: {
     position: 'absolute',
