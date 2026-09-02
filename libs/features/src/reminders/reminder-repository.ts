@@ -43,6 +43,24 @@ export class RemindersRepository {
     return this.storage.reminders.where('workspaceId').equals(wsId).sortBy('dueAt');
   }
 
+  /** Load a single reminder by id (used by detail screens; undefined when missing). */
+  async findById(id: string): Promise<ReminderRecord | undefined> {
+    return this.storage.reminders.get(id);
+  }
+
+  /**
+   * Reminders linked to a note in the current workspace, due-date-ascending
+   * (used by the note detail screen's “Related reminders” section).
+   */
+  async listForNote(noteId: string): Promise<ReminderRecord[]> {
+    const wsId = resolveWorkspaceId(this.workspace);
+    return this.storage.reminders
+      .where('workspaceId')
+      .equals(wsId)
+      .filter((reminder) => reminder.linkedNoteId === noteId)
+      .sortBy('dueAt');
+  }
+
   async create(input: CreateReminderInput): Promise<string> {
     const timestamp = this.now();
     const id = this.generateId();

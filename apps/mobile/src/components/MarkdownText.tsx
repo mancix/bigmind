@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   parseMarkdown,
+  normalizeWikiLinkName,
   type InlineToken,
   type MarkdownBlock,
 } from '@bigmind/markdown';
@@ -14,18 +15,26 @@ interface MarkdownTextProps {
   onWikiPress?: (title: string) => void;
   /** Called when an external link is tapped (default: no-op). */
   onLinkPress?: (url: string) => void;
+  /**
+   * Normalized titles (`normalizeWikiLinkName`) that resolve to an existing
+   * note. Wiki links NOT in this set render as "missing notes" (muted red,
+   * still tappable via `onWikiPress`).
+   */
+  resolvedWikiTitles?: ReadonlySet<string>;
   testID?: string;
 }
 
 /**
  * Native Markdown preview — renders the SHARED `@bigmind/markdown` tokenizer
  * output into RN components (Android-first). Display-only: the stored text
- * stays the source of truth.
+ * stays the source of truth. Supports headings, bold, italic, code, lists
+ * (incl. `- [ ]` checklists), blockquotes, links, wiki links and tables.
  */
 export function MarkdownText({
   markdown,
   onWikiPress,
   onLinkPress,
+  resolvedWikiTitles,
   testID,
 }: MarkdownTextProps) {
   const blocks = parseMarkdown(markdown);
@@ -38,6 +47,7 @@ export function MarkdownText({
           block={block}
           onWikiPress={onWikiPress}
           onLinkPress={onLinkPress}
+          resolvedWikiTitles={resolvedWikiTitles}
         />
       ))}
       {blocks.length === 0 ? (
@@ -51,16 +61,19 @@ function Block({
   block,
   onWikiPress,
   onLinkPress,
+  resolvedWikiTitles,
 }: {
   block: MarkdownBlock;
   onWikiPress?: (title: string) => void;
   onLinkPress?: (url: string) => void;
+  resolvedWikiTitles?: ReadonlySet<string>;
 }) {
   const inline = (tokens: InlineToken[]) => (
     <Inline
       tokens={tokens}
       onWikiPress={onWikiPress}
       onLinkPress={onLinkPress}
+      resolvedWikiTitles={resolvedWikiTitles}
     />
   );
 
@@ -86,9 +99,22 @@ function Block({
           {block.items.map((item, index) => (
             <View key={index} style={styles.listRow}>
               <Text style={styles.listBullet}>
-                {block.ordered ? `${index + 1}.` : '•'}
+                {item.checked === null
+                  ? block.ordered
+                    ? `${index + 1}.`
+                    : '•'
+                  : item.checked
+                    ? '☑'
+                    : '☐'}
               </Text>
-              <Text style={styles.paragraph}>{inline(item)}</Text>
+              <Text
+                style={[
+                  styles.paragraph,
+                  item.checked === true && styles.paragraphDone,
+                ]}
+              >
+                {inline(item.content)}
+              </Text>
             </View>
           ))}
         </View>
@@ -137,10 +163,12 @@ function Inline({
   tokens,
   onWikiPress,
   onLinkPress,
+  resolvedWikiTitles,
 }: {
   tokens: InlineToken[];
   onWikiPress?: (title: string) => void;
   onLinkPress?: (url: string) => void;
+  resolvedWikiTitles?: ReadonlySet<string>;
 }): ReactNode {
   return tokens.map((token, index) => {
     switch (token.type) {
@@ -153,6 +181,7 @@ function Inline({
               tokens={token.content}
               onWikiPress={onWikiPress}
               onLinkPress={onLinkPress}
+              resolvedWikiTitles={resolvedWikiTitles}
             />
           </Text>
         );
@@ -163,6 +192,7 @@ function Inline({
               tokens={token.content}
               onWikiPress={onWikiPress}
               onLinkPress={onLinkPress}
+              resolvedWikiTitles={resolvedWikiTitles}
             />
           </Text>
         );
@@ -183,19 +213,26 @@ function Inline({
               tokens={token.content}
               onWikiPress={onWikiPress}
               onLinkPress={onLinkPress}
+              resolvedWikiTitles={resolvedWikiTitles}
             />
           </Text>
         );
-      case 'wiki':
+      case 'wiki': {
+        const resolved =
+          resolvedWikiTitles === undefined ||
+          resolvedWikiTitles.has(normalizeWikiLinkName(token.title));
         return (
           <Text
             key={index}
-            style={styles.wiki}
+            style={resolved ? styles.wiki : styles.wikiMissing}
             onPress={onWikiPress ? () => onWikiPress(token.title) : undefined}
           >
             {`[[${token.label ?? token.title}]]`}
           </Text>
         );
+      }
+      default:
+        return null;
     }
   });
 }
@@ -213,6 +250,10 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     lineHeight: 22,
   },
+  paragraphDone: {
+    color: colors.textMuted,
+    textDecorationLine: 'line-through',
+  },
   heading: {
     color: colors.text,
     fontWeight: '700',
@@ -229,6 +270,10 @@ const styles = StyleSheet.create({
   },
   link: { color: colors.primary },
   wiki: { color: colors.accent },
+  wikiMissing: {
+    color: colors.danger,
+    textDecorationLine: 'underline',
+  },
   list: { gap: spacing.xs },
   listRow: { flexDirection: 'row', gap: spacing.sm },
   listBullet: { color: colors.textMuted, width: 20 },

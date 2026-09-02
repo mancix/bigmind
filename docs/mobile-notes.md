@@ -23,7 +23,7 @@ Bottom Tab Navigator (RootNavigator)
 │     ├── NotesList   → NoteDetail { noteId }     ← push (native transition)
 ├── Categories ─── native stack (CategoriesNavigator)
 ├── Workspaces ─── native stack (WorkspacesNavigator)
-├── Reminders     (single screen)
+├── Reminders  ─── native stack (RemindersNavigator)
 └── Settings      (single screen)
 ```
 
@@ -77,17 +77,32 @@ of notes.
 
 ## Note Detail Screen
 
-`NoteDetailScreen`:
+`NoteDetailScreen` is the **central screen** of the mobile app and is
+read-mode-first. The full architecture — wiki links, backlinks, related
+reminders, category path, sync status, conflict awareness, offline behavior,
+and performance — is documented in [Mobile Note Detail Architecture](mobile-note-detail.md).
 
-- **Edit** — shared `noteDataSchema` validation before saving through
-  `noteRepository.update()` (unchanged behavior).
-- **Delete** — confirmation dialog (`Alert.alert`) → `noteRepository.delete()`
-  → `goBack()`. Deletion is local-first (outbox), so it works **offline** and
-  syncs later.
-- **Structure** — category picker (shared `CategoryRepository`), wiki-link
-  backlinks/outgoing links (shared `LinkRepository`), TODO-list notes via the
-  shared `TodoRepository` + `TodoListView`.
-- **Per-note sync state** — `syncStatus` label (`pending` / synced / `conflict`).
+In short:
+
+- **Read mode (default)** — title + shared `SyncStatusPill`, category path chip
+  (→ Categories tab), created/updated dates, and the stored Markdown rendered
+  through the shared `@bigmind/markdown` tokenizer via `MarkdownText`
+  (headings, bold, italic, code, lists, checklists, blockquotes, links, wiki
+  links).
+- **Wiki links** — `[[Title]]` tokens are tappable; they resolve through the
+  shared `resolveWikiLinkTarget` + `LinkRepository` aliases, push the target
+  note, and missing notes are clearly indicated (styled + alert on tap).
+- **Backlinks** — `LinkRepository.getBacklinks()` with title + preview,
+  virtualized, pushes the source note.
+- **Related reminders** — `RemindersRepository.listForNote()` (workspace
+  scoped), tap → ReminderDetail, ＋ Add reminder → pre-linked ReminderForm.
+- **Conflict awareness** — banner when `syncStatus === 'conflict'` or an open
+  `ConflictRecord` exists for the note (indicator only; resolution is a future
+  screen).
+- **Edit mode** — the shipped editor is preserved: shared `noteDataSchema`
+  validation before saving through `noteRepository.update()`, category picker
+  (shared `CategoryRepository`), `MarkdownEditView`/`TodoListView`, cancel and
+  confirm-delete via `Alert` (local-first outbox deletion, offline-safe).
 
 ## Offline Notes Experience
 
@@ -123,7 +138,7 @@ prepared for it without behavioral change:
 
 | Spec                                                        | Covers                                          |
 | ----------------------------------------------------------- | ----------------------------------------------- |
-| `screens/notes/notes-experience.spec.tsx`                    | loading, search (title+content), sorting toggle, creation + navigation, save, offline deletion via confirm dialog, offline sync pill + offline browsing |
+| `screens/notes/notes-experience.spec.tsx`                    | list: loading, search (title+content), sorting toggle, creation + navigation, offline sync pill + offline browsing; **detail (read mode)**: loading, markdown rendering, wiki-link navigation + missing-link indication, backlinks + preview + navigation, related reminders + navigation + create, category path + navigation, conflict indicator, offline readability; edit: save via shared repository, offline delete via confirm dialog |
 | `features/notes/note-list.spec.ts`                           | pure search/sort/pagination/`buildNoteList`/archive flag |
 
 Shared behavior (outbox, previews, wiki links) is covered by the shared

@@ -100,7 +100,9 @@ The note, category, and wiki-link repositories that power the web app were extra
 1. **Done** — `SqliteStorageAdapter` (`libs/storage/src/sqlite-storage-adapter.ts`) implements `StorageAdapter` over a `SqliteDriver`; schema v1 mirrors the Dexie v11 shape; versioned migrations in `libs/storage/src/sqlite-migrations.ts`.
 2. **Done** — `apps/mobile/src/storage/` now ships the storage provider (`createMobileStorageProvider`) with **SQLite as the production default** (`EXPO_PUBLIC_STORAGE_ENGINE=memory` opts back into the in-memory adapter; jest uses memory).
 3. Shared `@bigmind/sync` types and the shared `HttpSyncTransport` are already wired with the mobile auth store + workspace store; background sync triggers (AppState + NetInfo) are handled by `apps/mobile/src/sync/supervisor.ts`.
-4. Remaining platform work: notifications UI (expo-notifications) and any follow-up schema migrations documented in [Storage Architecture](storage-architecture.md).
+4. Remaining platform work: notifications (expo-notifications) and any
+   follow-up schema migrations documented in [Storage Architecture](storage-architecture.md).
+   Reminders UI now ships (see [Mobile Reminders](mobile-reminders.md)).
 
 ## Mobile app structure
 
@@ -115,24 +117,35 @@ apps/mobile/
       App.spec.tsx          Smoke test: renders the tab navigator (jest-expo)
     navigation/
       types.ts              RootTabParamList + per-tab stack param lists
-      RootNavigator.tsx     Bottom tabs; Notes/Categories host nested stacks
+      RootNavigator.tsx     Bottom tabs; Notes/Categories/Reminders host nested stacks
       NotesNavigator.tsx    Notes tab stack: list ⇄ detail
       CategoriesNavigator.tsx Categories tab stack: tree ⇄ detail
+      RemindersNavigator.tsx Reminders tab stack: agenda ⇄ detail ⇄ form
       AuthNavigator.tsx     Signed-out stack: login ⇄ register
     screens/
       HomeScreen.tsx        Overview + shared-code showcase (domain/contracts/storage)
-      RemindersScreen.tsx   Placeholder (shared reminder rules)
       SettingsScreen.tsx    Auth state, API URL, local-data controls
       notes/                Notes stack (see docs/mobile-notes.md): list with
                            search/sort/pagination + sync pill;
-                           detail with MarkdownEditView, links, delete
+                           read-mode-first detail (docs/mobile-note-detail.md):
+                           shared markdown rendering + wiki links, backlinks,
+                           related reminders, category path, sync status,
+                           conflict banner; edit mode = MarkdownEditView
         NotesListScreen.tsx   Recent-first note list (shared NoteRepository)
-        NoteDetailScreen.tsx  Edit title/content/category, delete, contract-validated save
+        NoteDetailScreen.tsx  Central read-mode screen + shipped editor, delete
       categories/           Categories stack (see docs/mobile-categories.md):
                            lazy tree + note counts + hierarchy-aware search;
                            detail with breadcrumb, move, markdown description
         CategoriesListScreen.tsx  Category tree (domain buildCategoryTree)
         CategoryDetailScreen.tsx  Rename/move/description/delete guards + notes
+      reminders/            Reminders stack (see docs/mobile-reminders.md):
+                           agenda grouped Today/Tomorrow/Upcoming/Completed,
+                           local title+description search, offline banner,
+                           detail + create/edit form (DateTimePicker due date,
+                           linked-note picker, completion toggle)
+        RemindersListScreen.tsx   Agenda (SectionList) over shared RemindersRepository
+        ReminderDetailScreen.tsx  Title/description/due/status/linked note + actions
+        ReminderFormScreen.tsx    Create/edit; offline-safe via shared repository
     components/             Screen + Card + AuthLayout/AuthField scaffolds,
                            MarkdownText (shared tokenizer preview),
                            MarkdownEditView (toolbar + wiki suggestions +
@@ -197,6 +210,37 @@ The note detail embeds `MarkdownEditView` (`apps/mobile/src/components/`): a raw
 
 The note editor also validates the assembled record with the shared `noteDataSchema` (`@bigmind/contracts`) before saving.
 
+### Note Detail (read mode) — shipped
+
+The Note Detail screen is the **central screen**, read-mode-first: it renders
+the stored Markdown through the shared `@bigmind/markdown` tokenizer
+(`MarkdownText`) with headings/bold/italic/code/lists/**checklists**/
+blockquotes/links/**wiki links**, resolves `[[wiki]]` taps via the shared
+`resolveWikiLinkTarget` + `LinkRepository` aliases (missing notes styled +
+alerted), shows **backlinks** (shared `LinkRepository`, title + preview),
+**related reminders** (`RemindersRepository.listForNote`, navigate + create
+pre-linked), the **category path** (→ Categories tab), **created/updated
+dates**, the shared `SyncStatusPill`, and a **conflict-awareness banner**
+(open `ConflictRecord` or `syncStatus === 'conflict'`; resolution stays on the
+future conflict screen). Edit mode preserves the shipped editor. See
+[Mobile Note Detail](mobile-note-detail.md).
+
+### Reminders (mobile) — shipped
+
+The Reminders tab is a native stack with the full reminder experience: an
+**Agenda** grouped into Today / Tomorrow / Upcoming / Completed (exact web
+parity, `dueAt`-ascending per section), **local title + description search**,
+**detail** (title, description, due date, completion status, linked note with
+navigation to the Notes tab), a **create/edit form** (due date via
+`@react-native-community/datetimepicker`, optional linked-note picker, and in
+edit mode a completion toggle), **complete/incomplete** toggling, and
+**delete with confirmation**. Everything is backed by the shared
+`RemindersRepository` — offline-first with outbox coalescing and workspace
+scoping — and rendered with a virtualized `SectionList`. See
+[Mobile Reminders](mobile-reminders.md) for the agenda rules, sync behavior,
+workspace integration, performance notes, and the future notification
+integration plan.
+
 Validation matrices for behavior parity: `libs/features/src/repositories.spec.ts` (platform-independent), `apps/mobile/src/features/data/repositories.spec.ts` + `apps/mobile/src/screens/notes/notes-experience.spec.tsx` (mobile), plus the full web suite.
 
 ## Navigation (React Navigation)
@@ -216,7 +260,7 @@ NavigationContainer
             └── Settings
 ```
 
-Future screens (reminders, conflict review, deeper categories) can be added as native stacks above the tabs. The note editor strategy is evaluated in [Mobile Editor Evaluation](mobile-editor.md) — recommendation: native Markdown editing + shared preview renderer (Phase 1 of the roadmap), no editor code shipped yet.
+Future screens (conflict review, deeper categories) can be added as native stacks above the tabs. The note editor strategy is evaluated in [Mobile Editor Evaluation](mobile-editor.md) — recommendation: native Markdown editing + shared preview renderer (Phase 1 of the roadmap), no editor code shipped yet.
 
 ## API connectivity
 
@@ -259,6 +303,7 @@ pnpm exec nx run @bigmind/mobile:test
 | `crypto.randomUUID()`     | available                   | not guaranteed on Hermes — use `expo-crypto` or a local id helper                                |
 | `navigator.onLine`        | engine online gate          | `@react-native-community/netinfo` (wired via the shared Connectivity abstraction)                |
 | Background sync           | service worker + 30s timer  | AppState listener + push (expo-notifications)                                                    |
-| Notifications UI          | browser Notification Center | expo-notifications + SQLite silo                                                                 |
+| Notifications UI          | browser Notification Center | expo-notifications + SQLite silo (architecture ready; see                                         |
+|                           |                             | [mobile-reminders.md](mobile-reminders.md) for the reminder→notification seam)                   |
 | Search index (MiniSearch) | in-memory + Dexie           | keep MiniSearch (pure JS)                                                                        |
 | Rich text                 | Milkdown Crepe (web-only)   | native Markdown `TextInput` + shared renderer preview (see [mobile-editor.md](mobile-editor.md)) |

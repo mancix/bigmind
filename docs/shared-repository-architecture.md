@@ -143,6 +143,16 @@ of being read from a platform store, so the repositories stay platform-free:
 Records created without a workspace fall back to `''`, preserving the legacy
 web behavior exactly.
 
+The mobile Reminders tab consumes this exact repository + scoping (see
+[Mobile Reminders](mobile-reminders.md)): `RemindersRepository.list()` feeds
+an agenda grouped by due date, `findById` powers the detail screen, and
+`create`/`update`/`toggle`/`remove` drive the create/edit form, completion
+toggling, and confirmed deletion — all offline-first over the outbox, with the
+same coalescing and workspace isolation as the web app. The note-detail screen
+adds `listForNote(noteId)` (workspace-scoped reminder queries for the
+“Related reminders” section, see [Mobile Note Detail](mobile-note-detail.md))
+and `LinkRepository.listAllAliases()` (wiki-title resolution on a screen).
+
 ## Future compatibility
 
 The layering is deliberately future-proof:

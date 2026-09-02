@@ -233,6 +233,31 @@ describe('shared feature repositories (platform independent)', () => {
     });
   });
 
+  it('lists reminders linked to a note (workspace-scoped, due-ascending)', async () => {
+    const { reminders, notes } = createHarness();
+    await notes.create({ title: 'Shipped', content: '' });
+    await notes.create({ title: 'Other', content: '' });
+    const noteId = (await notes.list())[0].id;
+
+    await reminders.create({
+      title: 'Later',
+      dueAt: '2026-02-02T09:00:00.000Z',
+      linkedNoteId: noteId,
+    });
+    await reminders.create({
+      title: 'Sooner',
+      dueAt: '2026-02-01T09:00:00.000Z',
+      linkedNoteId: noteId,
+    });
+    await reminders.create({
+      title: 'Unlinked',
+      dueAt: '2026-02-03T09:00:00.000Z',
+    });
+
+    const linked = await reminders.listForNote(noteId);
+    expect(linked.map((reminder) => reminder.title)).toEqual(['Sooner', 'Later']);
+  });
+
   it('isolates reminders and notifications by workspace', async () => {
     const wsA = createHarness('ws-a');
     const wsB = createHarness('ws-b');

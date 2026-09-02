@@ -62,6 +62,45 @@ jest.mock('@react-native-community/netinfo', () => ({
   }),
 }));
 
+// DateTimePicker is a native module (bundled in Expo Go SDK 55). In tests it
+// renders a pressable stub that emits `onChange` with a `Date` — either the
+// current `value` prop or, when a test needs a specific date, the value set on
+// `globalThis.__datetimepickerNextValue` before opening the dialog (keys on the
+// picker's `testID`).
+(globalThis as Record<string, unknown>).__datetimepickerNextValue = null;
+
+jest.mock('@react-native-community/datetimepicker', () => {
+  const React = require('react');
+  const { Pressable, Text } = require('react-native');
+  const stub = ({
+    value,
+    mode,
+    onChange,
+    testID,
+  }: {
+    value: Date;
+    mode: 'date' | 'time' | 'datetime';
+    onChange?: (event: { type: string }, date?: Date) => void;
+    testID?: string;
+  }) => {
+    const next =
+      (globalThis as Record<string, unknown>).__datetimepickerNextValue ?? value;
+    return React.createElement(
+      Pressable,
+      {
+        testID: testID ?? `datetimepicker-${mode}`,
+        onPress: () => onChange?.({ type: 'set' }, next as Date),
+      },
+      React.createElement(Text, null, `DateTimePicker:${mode}`),
+    );
+  };
+  return {
+    __esModule: true,
+    default: stub,
+    DateTimePickerAndroid: { open: jest.fn() },
+  };
+});
+
 // React Navigation uses native screens; in tests they render as plain views.
 jest.mock('react-native-screens', () => {
   const React = require('react');

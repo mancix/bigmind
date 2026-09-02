@@ -7,10 +7,16 @@
  */
 import { parseInline, type InlineToken } from './inline.js';
 
+export interface MarkdownListItem {
+  /** `true` for `- [x]`, `false` for `- [ ]`, `null` for a plain list item. */
+  checked: boolean | null;
+  content: InlineToken[];
+}
+
 export type MarkdownBlock =
   | { type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; content: InlineToken[] }
   | { type: 'paragraph'; content: InlineToken[] }
-  | { type: 'list'; ordered: boolean; items: InlineToken[][] }
+  | { type: 'list'; ordered: boolean; items: MarkdownListItem[] }
   | { type: 'code'; language: string | null; content: string }
   | { type: 'blockquote'; content: InlineToken[] }
   | { type: 'table'; header: string[]; rows: string[][] }
@@ -20,6 +26,8 @@ const HEADING_PATTERN = /^(#{1,6})\s+(.*)$/;
 const HR_PATTERN = /^(\s*[-*_]){3,}\s*$/;
 const UNORDERED_ITEM = /^\s*[-*+]\s+(.*)$/;
 const ORDERED_ITEM = /^\s*\d+[.)]\s+(.*)$/;
+/** `- [ ] todo` / `- [x] done` / `- [X] done` (gf m-task-list style). */
+const CHECKLIST_ITEM = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/;
 const BLOCKQUOTE = /^>\s?(.*)$/;
 const FENCE = /^```\s*([\w+-]*)\s*$/;
 const TABLE_SEPARATOR = /^\s*\|?[\s:|-]+\|?\s*$/;
@@ -104,21 +112,30 @@ export function parseMarkdown(markdown: string): MarkdownBlock[] {
       }
     }
 
+    const checklist = CHECKLIST_ITEM.exec(line);
     const unordered = UNORDERED_ITEM.exec(line);
     const ordered = ORDERED_ITEM.exec(line);
     if (
-      (unordered || ordered) &&
+      (checklist || unordered || ordered) &&
       (paragraph.length === 0 || paragraph.length === 1)
     ) {
       flushParagraph();
-      const orderedList = Boolean(ordered);
-      const items: InlineToken[][] = [];
+      const orderedList = Boolean(ordered && !checklist);
+      const items: MarkdownListItem[] = [];
       while (index < lines.length) {
+        const taskMatch = checklist ? CHECKLIST_ITEM.exec(lines[index]) : null;
         const itemMatch = orderedList
           ? ORDERED_ITEM.exec(lines[index])
           : UNORDERED_ITEM.exec(lines[index]);
         if (!itemMatch) break;
-        items.push(parseInline(itemMatch[1]));
+        if (checklist) {
+          items.push({
+            checked: taskMatch ? taskMatch[1].toLocaleLowerCase() === 'x' : null,
+            content: parseInline(taskMatch?.[2] ?? itemMatch[1]),
+          });
+        } else {
+          items.push({ checked: null, content: parseInline(itemMatch[1]) });
+        }
         index += 1;
       }
       blocks.push({ type: 'list', ordered: orderedList, items });

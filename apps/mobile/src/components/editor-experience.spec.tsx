@@ -40,6 +40,37 @@ describe('MarkdownText (shared renderer)', () => {
     fireEvent.press(getByText('[[Some Note]]'));
     expect(onWikiPress).toHaveBeenCalledWith('Some Note');
   });
+
+  it('renders checklists with checked state from the shared tokenizer', () => {
+    const { getByText } = render(
+      <MarkdownText markdown={'- [ ] open\n- [x] done'} />,
+    );
+    expect(getByText('open')).toBeTruthy();
+    expect(getByText('done')).toBeTruthy();
+    // Glyphs: unchecked ☐ and checked ☑
+    expect(getByText('☐')).toBeTruthy();
+    expect(getByText('☑')).toBeTruthy();
+  });
+
+  it('visually distinguishes missing wiki links from resolved ones', () => {
+    const resolved = new Set(['target']); // normalized
+    const { getByText } = render(
+      <MarkdownText
+        markdown={'[[Target]] vs [[Missing]]'}
+        resolvedWikiTitles={resolved}
+      />,
+    );
+    const resolvedLink = getByText('[[Target]]');
+    expect(resolvedLink.props.style).not.toMatchObject({
+      textDecorationLine: 'underline',
+    });
+    // Missing notes are stricken/underlined in the danger color.
+    const missing = getByText('[[Missing]]');
+    expect(missing.props.style).toMatchObject({
+      textDecorationLine: 'underline',
+      color: '#f87171',
+    });
+  });
 });
 
 describe('MarkdownEditView (Option B editor)', () => {

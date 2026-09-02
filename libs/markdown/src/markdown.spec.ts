@@ -60,6 +60,34 @@ describe('parseMarkdown', () => {
       items: [expect.anything(), expect.anything()],
     });
     expect(blocks[4]).toMatchObject({ type: 'list', ordered: true });
+    // Plain list items carry checked: null.
+    expect(blocks[3].type === 'list' && blocks[3].items).toEqual([
+      { checked: null, content: [{ type: 'text', value: 'one' }] },
+      { checked: null, content: [{ type: 'text', value: 'two' }] },
+    ]);
+  });
+
+  it('parses gf-style checklists with checked state', () => {
+    const blocks = parseMarkdown('- [ ] open task\n- [x] done task\n- [X] also done\n- plain item');
+    expect(blocks[0]).toMatchObject({ type: 'list', ordered: false });
+    expect(blocks[0].type === 'list' && blocks[0].items).toEqual([
+      { checked: false, content: [{ type: 'text', value: 'open task' }] },
+      { checked: true, content: [{ type: 'text', value: 'done task' }] },
+      { checked: true, content: [{ type: 'text', value: 'also done' }] },
+      { checked: null, content: [{ type: 'text', value: 'plain item' }] },
+    ]);
+  });
+
+  it('keeps checklist inline formatting inside item content', () => {
+    const blocks = parseMarkdown('- [ ] **bold** task with [[Wiki]]');
+    expect(blocks[0].type === 'list' && blocks[0].items[0]).toMatchObject({
+      checked: false,
+      content: [
+        { type: 'bold', content: [{ type: 'text', value: 'bold' }] },
+        { type: 'text', value: ' task with ' },
+        { type: 'wiki', title: 'Wiki' },
+      ],
+    });
   });
 
   it('parses tables', () => {

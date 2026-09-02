@@ -3,10 +3,10 @@ import { StyleSheet, Text } from 'react-native';
 
 import { colors } from '../theme';
 import { HomeScreen } from '../screens/HomeScreen';
-import { RemindersScreen } from '../screens/RemindersScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { CategoriesNavigator } from './CategoriesNavigator';
 import { NotesNavigator } from './NotesNavigator';
+import { RemindersNavigator } from './RemindersNavigator';
 import { WorkspacesNavigator } from './WorkspacesNavigator';
 import type { RootTabParamList } from './types';
 
@@ -55,7 +55,11 @@ export function RootNavigator() {
         component={WorkspacesNavigator}
         options={{ headerShown: false }}
       />
-      <Tab.Screen name="Reminders" component={RemindersScreen} />
+      <Tab.Screen
+        name="Reminders"
+        component={RemindersNavigator}
+        options={{ headerShown: false }}
+      />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );

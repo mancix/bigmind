@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from '../features/auth/auth-provider';
 import { WorkspaceProvider } from '../features/workspaces/workspace-context';
 import { AuthNavigator } from '../navigation/AuthNavigator';
 import { RootNavigator } from '../navigation/RootNavigator';
+import type { RootStackParamList } from '../navigation/types';
 import { SyncActivator } from './SyncActivator';
 import { colors } from '../theme';
 
@@ -44,7 +45,13 @@ const linking: LinkingOptions<RootStackParamList> = {
               CategoryDetail: 'categories/:categoryId',
             },
           },
-          Reminders: 'reminders',
+          Reminders: {
+            screens: {
+              RemindersList: 'reminders',
+              ReminderDetail: 'reminders/:reminderId',
+              ReminderForm: 'reminders/new',
+            },
+          },
           Settings: 'settings',
         },
       },

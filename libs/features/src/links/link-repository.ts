@@ -142,6 +142,14 @@ export class LinkRepository {
     return this.storage.noteAliases.where('noteId').equals(noteId).toArray();
   }
 
+  /**
+   * Every alias in the note graph (used to resolve `[[wiki]]` titles on a
+   * screen, the same data `resolveWikiLinkTarget` consumes in the repo).
+   */
+  async listAllAliases(): Promise<NoteAliasRecord[]> {
+    return this.storage.noteAliases.toArray();
+  }
+
   private async rebuild(note: NoteRecord): Promise<void> {
     const [notes, aliases, existingLinks] = await Promise.all([
       this.storage.notes.filter((candidate) => !candidate.deletedAt).toArray(),
