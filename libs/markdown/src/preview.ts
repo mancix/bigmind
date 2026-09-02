@@ -1,23 +1,31 @@
 /**
  * Plain-text note preview — canonical implementation shared by web and
- * mobile. Ported verbatim from `@bigmind/domain/notes` so every client
- * generates the same preview (kept in the markdown library as the single
- * source of the plain-text extraction).
+ * mobile. Ported from `@bigmind/domain/notes` so every client generates the
+ * same preview, and built on the shared {@link extractPlainText} so previews
+ * and search indexing never diverge.
  */
+
+import { extractPlainText } from './text.js';
+
+/** Fallback shown when a note has no readable content. */
 export const EMPTY_NOTE_PREVIEW = 'Empty note';
 
-export function createNotePreview(
+/**
+ * Builds a human-readable preview of a Markdown document.
+ *
+ * Strips Markdown/HTML formatting while preserving the text a reader would
+ * see, then truncates to `maxLength` characters (always appending `…` when
+ * truncated; the ellipsis is part of the returned string).
+ *
+ * @param markdown raw note content
+ * @param maxLength maximum preview length; `undefined` returns the full
+ * plain text; `0` returns `''`; `1` returns `'…'`
+ */
+export function createMarkdownPreview(
   markdown: string,
   maxLength?: number,
 ): string {
-  const plainText = markdown
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[#>*_`~[\]-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const plainText = extractPlainText(markdown);
   const preview = plainText || EMPTY_NOTE_PREVIEW;
 
   if (maxLength === undefined || preview.length <= maxLength) {
@@ -34,3 +42,11 @@ export function createNotePreview(
 
   return `${preview.slice(0, maxLength - 1).trimEnd()}…`;
 }
+
+/**
+ * @deprecated Use {@link createMarkdownPreview} — kept as an alias so
+ * existing callers (web list, mobile list, domain re-export) keep working.
+ */
+export const createNotePreview = createMarkdownPreview;
+
+export { EMPTY_NOTE_PREVIEW as EMPTY_PREVIEW };

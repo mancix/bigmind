@@ -127,7 +127,7 @@ describe('MarkdownEditView (Option B editor)', () => {
 
   it('toggles between edit and preview', async () => {
     const { getByTestId, findByTestId, findByText } = render(
-      <Harness initial="# Title\n\nSome content">
+      <Harness initial={'# Title\n\nSome content'}>
         {(value, setValue) => (
           <MarkdownEditView
             value={value}
@@ -145,6 +145,124 @@ describe('MarkdownEditView (Option B editor)', () => {
 
     fireEvent.press(getByTestId('md-edit'));
     await waitFor(() => expect(getByTestId('md-field')).toBeTruthy());
+  });
+
+  describe('block toolbar actions (shared string transforms)', () => {
+    it('converts the caret line to a bullet list and back', () => {
+      const { getByTestId } = render(
+        <Harness initial={'alpha\nbeta'}>
+          {(value, setValue) => (
+            <MarkdownEditView
+              value={value}
+              onChangeText={setValue}
+              noteTitles={[]}
+              testID="md-field"
+            />
+          )}
+        </Harness>,
+      );
+      const input = getByTestId('md-field');
+      fireEvent(input, 'selectionChange', {
+        nativeEvent: { selection: { start: 6, end: 6 } }, // line "beta"
+      });
+      fireEvent.press(getByTestId('md-bullet-list'));
+      expect(input.props.value).toBe('alpha\n- beta');
+      // Cursor anchored after the marker.
+      expect(input.props.selection).toEqual({ start: 8, end: 8 });
+
+      fireEvent.press(getByTestId('md-bullet-list'));
+      expect(input.props.value).toBe('alpha\nbeta');
+    });
+
+    it('wraps the caret line into an ordered list and a checklist', () => {
+      const { getByTestId } = render(
+        <Harness initial="plan">
+          {(value, setValue) => (
+            <MarkdownEditView
+              value={value}
+              onChangeText={setValue}
+              noteTitles={[]}
+              testID="md-field"
+            />
+          )}
+        </Harness>,
+      );
+      const input = getByTestId('md-field');
+      fireEvent.press(getByTestId('md-ordered-list'));
+      expect(input.props.value).toBe('1. plan');
+
+      fireEvent(input, 'selectionChange', {
+        nativeEvent: { selection: { start: 0, end: 3 } },
+      });
+      fireEvent.press(getByTestId('md-checklist'));
+      expect(input.props.value).toBe('- [ ] 1. plan');
+    });
+
+    it('wraps the caret line in a code block and unwraps from inside', () => {
+      const { getByTestId } = render(
+        <Harness initial="const a = 1;">
+          {(value, setValue) => (
+            <MarkdownEditView
+              value={value}
+              onChangeText={setValue}
+              noteTitles={[]}
+              testID="md-field"
+            />
+          )}
+        </Harness>,
+      );
+      const input = getByTestId('md-field');
+      fireEvent(input, 'selectionChange', {
+        nativeEvent: { selection: { start: 6, end: 6 } },
+      });
+      fireEvent.press(getByTestId('md-code-block'));
+      expect(input.props.value).toBe('```\nconst a = 1;\n```');
+
+      fireEvent.press(getByTestId('md-code-block'));
+      expect(input.props.value).toBe('const a = 1;');
+    });
+
+    it('toggles a blockquote prefix', () => {
+      const { getByTestId } = render(
+        <Harness initial="said">
+          {(value, setValue) => (
+            <MarkdownEditView
+              value={value}
+              onChangeText={setValue}
+              noteTitles={[]}
+              testID="md-field"
+            />
+          )}
+        </Harness>,
+      );
+      const input = getByTestId('md-field');
+      fireEvent.press(getByTestId('md-quote'));
+      expect(input.props.value).toBe('> said');
+      fireEvent.press(getByTestId('md-quote'));
+      expect(input.props.value).toBe('said');
+    });
+
+    it('inserts a wiki-link snippet with the caret inside the brackets', () => {
+      const { getByTestId } = render(
+        <Harness initial="see ">
+          {(value, setValue) => (
+            <MarkdownEditView
+              value={value}
+              onChangeText={setValue}
+              noteTitles={[]}
+              testID="md-field"
+            />
+          )}
+        </Harness>,
+      );
+      const input = getByTestId('md-field');
+      fireEvent(input, 'selectionChange', {
+        nativeEvent: { selection: { start: 4, end: 4 } },
+      });
+      fireEvent.press(getByTestId('md-wiki'));
+      expect(input.props.value).toBe('see [[]]');
+      expect(input.props.selection).toEqual({ start: 6, end: 6 });
+    });
   });
 });
 

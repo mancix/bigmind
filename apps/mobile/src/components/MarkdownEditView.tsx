@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,9 +11,15 @@ import {
 import {
   findWikiLinkTrigger,
   insertWikiLink,
+  insertWikiLinkSnippet,
   rankTitles,
+  toggleBulletList,
+  toggleChecklist,
+  toggleCodeBlock,
   toggleHeading,
   toggleInline,
+  toggleOrderedList,
+  toggleQuote,
   insertLink as insertLinkSnippet,
 } from '@bigmind/markdown';
 
@@ -125,7 +132,13 @@ export function MarkdownEditView({
           applyTransform((t, s, e) => toggleInline(t, s, e, 'code'))
         }
         onHeading={() => applyTransform(toggleHeading)}
+        onBulletList={() => applyTransform(toggleBulletList)}
+        onOrderedList={() => applyTransform(toggleOrderedList)}
+        onChecklist={() => applyTransform(toggleChecklist)}
+        onCodeBlock={() => applyTransform(toggleCodeBlock)}
+        onQuote={() => applyTransform(toggleQuote)}
         onLink={() => applyTransform(insertLinkSnippet)}
+        onWikiLink={() => applyTransform(insertWikiLinkSnippet)}
         onPreview={() => setMode('preview')}
       />
       <TextInput
@@ -174,14 +187,26 @@ function Toolbar({
   onItalic,
   onCode,
   onHeading,
+  onBulletList,
+  onOrderedList,
+  onChecklist,
+  onCodeBlock,
+  onQuote,
   onLink,
+  onWikiLink,
   onPreview,
 }: {
   onBold: () => void;
   onItalic: () => void;
   onCode: () => void;
   onHeading: () => void;
+  onBulletList: () => void;
+  onOrderedList: () => void;
+  onChecklist: () => void;
+  onCodeBlock: () => void;
+  onQuote: () => void;
   onLink: () => void;
+  onWikiLink: () => void;
   onPreview: () => void;
 }) {
   const buttons: { label: string; onPress: () => void; testID?: string }[] = [
@@ -189,11 +214,22 @@ function Toolbar({
     { label: 'I', onPress: onItalic, testID: 'md-italic' },
     { label: '</>', onPress: onCode, testID: 'md-code' },
     { label: 'H2', onPress: onHeading, testID: 'md-heading' },
+    { label: '•≡', onPress: onBulletList, testID: 'md-bullet-list' },
+    { label: '1.', onPress: onOrderedList, testID: 'md-ordered-list' },
+    { label: '☑', onPress: onChecklist, testID: 'md-checklist' },
+    { label: '{}', onPress: onCodeBlock, testID: 'md-code-block' },
+    { label: '❝', onPress: onQuote, testID: 'md-quote' },
     { label: '🔗', onPress: onLink, testID: 'md-link' },
+    { label: '[[ ]]', onPress: onWikiLink, testID: 'md-wiki' },
     { label: '👁️', onPress: onPreview, testID: 'md-preview' },
   ];
   return (
-    <View style={styles.toolbar}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.toolbar}
+      contentContainerStyle={styles.toolbarContent}
+    >
       {buttons.map((button) => (
         <Pressable
           key={button.label}
@@ -204,7 +240,7 @@ function Toolbar({
           <Text style={styles.toolbarLabel}>{button.label}</Text>
         </Pressable>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -220,9 +256,12 @@ function PreviewBar({ onBack }: { onBack: () => void }) {
 
 const styles = StyleSheet.create({
   toolbar: {
+    flexGrow: 0,
+    marginBottom: spacing.sm,
+  },
+  toolbarContent: {
     flexDirection: 'row',
     gap: spacing.xs,
-    marginBottom: spacing.sm,
   },
   toolbarButton: {
     backgroundColor: colors.surface,

@@ -1,5 +1,7 @@
 import MiniSearch from 'minisearch';
 
+import { createSearchDocument } from '@bigmind/markdown';
+
 import { storage, type NoteRecord } from '../../storage';
 import type { SearchResult } from './search.types';
 
@@ -67,11 +69,9 @@ export class NoteSearchIndex {
         .filter((note) => !note.deletedAt)
         .toArray();
 
-      const documents: SearchDocument[] = notes.map((note) => ({
-        id: note.id,
-        title: note.title,
-        content: note.content,
-      }));
+      const documents: SearchDocument[] = notes.map((note) =>
+        createSearchDocument(note),
+      );
 
       if (documents.length > 0) {
         this.miniSearch.removeAll();
@@ -104,11 +104,9 @@ export class NoteSearchIndex {
       return;
     }
 
-    const doc: SearchDocument = {
-      id: note.id,
-      title: note.title,
-      content: note.content,
-    };
+    // Index the plain text (shared `extractPlainText`) so Markdown syntax
+    // never pollutes matches, and content stays consistent with previews.
+    const doc: SearchDocument = createSearchDocument(note);
     try {
       this.miniSearch.discard(doc.id);
     } catch {

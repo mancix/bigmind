@@ -44,6 +44,25 @@ function hoursFromNow(hours: number): string {
   return new Date(Date.now() + hours * 3600_000).toISOString();
 }
 
+/**
+ * A `dueAt` on a LOCAL calendar day, e.g. `atLocalDayTime(1)` = tomorrow 09:30.
+ *
+ * The agenda groups by calendar day (`groupReminders` compares local day
+ * buckets), so relative offsets like `hoursFromNow(2)` break when the suite
+ * runs late at night (23:00 + 2h crosses midnight into "Tomorrow"). Building
+ * fixtures from local days keeps the sections deterministic at ANY run hour.
+ */
+function atLocalDayTime(
+  daysFromToday: number,
+  hour = 9,
+  minute = 30,
+): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromToday);
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+}
+
 describe('reminders experience', () => {
   beforeEach(async () => {
     await storage.clearAll();
@@ -62,19 +81,19 @@ describe('reminders experience', () => {
   it('lists reminders grouped into the agenda sections (Today / Tomorrow / Upcoming / Completed)', async () => {
     const today = await remindersRepository.create({
       title: 'Today task',
-      dueAt: hoursFromNow(2),
+      dueAt: atLocalDayTime(0),
     });
     const tomorrow = await remindersRepository.create({
       title: 'Tomorrow task',
-      dueAt: hoursFromNow(26),
+      dueAt: atLocalDayTime(1),
     });
     const upcoming = await remindersRepository.create({
       title: 'Next week',
-      dueAt: hoursFromNow(24 * 7),
+      dueAt: atLocalDayTime(7),
     });
     const done = await remindersRepository.create({
       title: 'Done task',
-      dueAt: hoursFromNow(-2),
+      dueAt: atLocalDayTime(-2),
     });
     await remindersRepository.toggle(done);
 

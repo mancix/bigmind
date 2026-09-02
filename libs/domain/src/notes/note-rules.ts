@@ -3,7 +3,11 @@ import type { Note, NoteContentChanges } from './note.js';
 
 // Note-preview generation lives in `@bigmind/markdown` (single source shared
 // by web and mobile); these re-exports keep the domain API stable.
-export { EMPTY_NOTE_PREVIEW, createNotePreview } from '@bigmind/markdown';
+export {
+  EMPTY_NOTE_PREVIEW,
+  createMarkdownPreview,
+  createNotePreview,
+} from '@bigmind/markdown';
 
 export const UNTITLED_NOTE_TITLE = 'Untitled note';
 

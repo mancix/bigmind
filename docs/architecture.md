@@ -181,7 +181,7 @@ Client-facing logic that must work identically on the web PWA and the mobile app
 - `@bigmind/storage` — local record types plus the platform-independent `StorageAdapter` abstraction. Web implements it with `DexieStorageAdapter` (IndexedDB); mobile ships `SqliteStorageAdapter` (expo-sqlite driver, see [Storage Architecture](storage-architecture.md)).
 - `@bigmind/auth` — the `AuthStore` token-refresh / offline-auth state machine with an injectable `TokenStorage` (localStorage on web, SecureStore on mobile).
 - `@bigmind/features` — the **shared repository layer**: `NoteRepository`, `CategoryRepository`, `LinkRepository`, `TodoRepository`, `RemindersRepository`, `NotificationsRepository`, and `ConflictRepository`, plus the DI provider (`createRepositoryProvider`), the `WorkspaceContext` abstraction (workspace scoping with localStorage/AsyncStorage injected by the platform), and `generateId()`. Every repository depends only on `StorageAdapter` + the sync interfaces — nothing platform-specific. See [Shared Repository Architecture](shared-repository-architecture.md).
-- `@bigmind/markdown` — the single source for Markdown handling: block/inline tokenizer, the canonical HTML renderer (`renderMarkdown`, ported from the web's `render-markdown.ts`), wiki-link extraction/normalization, note-preview generation, suggestion ranking, and formatting transforms. The web editor, the web category-description renderer (`apps/web/src/features/categories/render-markdown.ts` is now a re-export), and the mobile editor (Option B: native editor + shared preview renderer — see [Mobile Editor Evaluation](mobile-editor.md)) all consume it, so web and mobile cannot diverge.
+- `@bigmind/markdown` — the single source for Markdown handling: deterministic block/inline tokenizer with a platform-independent AST, the renderer abstraction (`createHtmlRenderer`, interfaces for future React Web / React Native / HTML / PDF renderers), the legacy parity HTML renderer (`renderMarkdown`, ported from the web's `render-markdown.ts`), wiki-link extraction/normalization/references (`findWikiLinkReferences`, `normalizeWikiLinks`), **backlink indexing** (`BacklinkIndex` — pure, immutable, reusable by repositories/search/graph), note-preview generation (`createMarkdownPreview`), **search preparation** (`extractPlainText`, `tokenize`, `prepareForIndexing`, `createSearchDocument`), suggestion ranking, and formatting transforms. The web editor, the web category-description renderer (`apps/web/src/features/categories/render-markdown.ts` is now a re-export), the web search index, and the mobile editor all consume it, so web and mobile cannot diverge. See [Markdown Architecture](markdown-architecture.md).
 
 ### Storage abstraction
 
@@ -279,11 +279,11 @@ The frontend sends an `X-Workspace-Id` header on every sync and search request. 
 
 Both clients persist local records through the **same `StorageAdapter` contract** (`@bigmind/storage`): notes, categories, links (noteLinks + noteAliases), todos, reminders, notifications, conflicts, and the sync outbox, plus the sync-state key-value table. Repositories (`@bigmind/features`, `@bigmind/sync`) only ever see this abstraction.
 
-| Platform | Implementation | Backing store |
-| -------- | -------------- | ------------- |
-| Web PWA  | `DexieStorageAdapter` (`apps/web/src/storage/`) | IndexedDB via Dexie |
-| Mobile   | `SqliteStorageAdapter` (`libs/storage`) | SQLite — expo-sqlite on device, node:sqlite in CI |
-| Tests    | `MemoryStorageAdapter` (`libs/storage`) | In-memory maps |
+| Platform | Implementation                                  | Backing store                                     |
+| -------- | ----------------------------------------------- | ------------------------------------------------- |
+| Web PWA  | `DexieStorageAdapter` (`apps/web/src/storage/`) | IndexedDB via Dexie                               |
+| Mobile   | `SqliteStorageAdapter` (`libs/storage`)         | SQLite — expo-sqlite on device, node:sqlite in CI |
+| Tests    | `MemoryStorageAdapter` (`libs/storage`)         | In-memory maps                                    |
 
 `SqliteStorageAdapter` runs against a tiny `SqliteDriver` contract; versioned migrations apply the initial schema (mirroring Dexie v11) and future upgrades atomically, and the storage provider in `apps/mobile/src/storage/` switches engines without touching repository code. The mobile app defaults to SQLite (offline-first persistence: restarts, reboots, long offline periods); tests default to memory. See [Storage Architecture](storage-architecture.md) for the schema, migration strategy, parity testing, and the roadmap (encrypted storage, workspace isolation, attachments).
 

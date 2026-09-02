@@ -68,7 +68,9 @@ describe('parseMarkdown', () => {
   });
 
   it('parses gf-style checklists with checked state', () => {
-    const blocks = parseMarkdown('- [ ] open task\n- [x] done task\n- [X] also done\n- plain item');
+    const blocks = parseMarkdown(
+      '- [ ] open task\n- [x] done task\n- [X] also done\n- plain item',
+    );
     expect(blocks[0]).toMatchObject({ type: 'list', ordered: false });
     expect(blocks[0].type === 'list' && blocks[0].items).toEqual([
       { checked: false, content: [{ type: 'text', value: 'open task' }] },

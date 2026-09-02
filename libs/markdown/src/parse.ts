@@ -22,6 +22,13 @@ export type MarkdownBlock =
   | { type: 'table'; header: string[]; rows: string[][] }
   | { type: 'hr' };
 
+/**
+ * The full document AST produced by {@link parseMarkdown} — an ordered list
+ * of block nodes whose inline content is {@link InlineToken}s. Platform
+ * independent; renderers consume it directly (see `renderer.ts`).
+ */
+export type MarkdownAst = MarkdownBlock[];
+
 const HEADING_PATTERN = /^(#{1,6})\s+(.*)$/;
 const HR_PATTERN = /^(\s*[-*_]){3,}\s*$/;
 const UNORDERED_ITEM = /^\s*[-*+]\s+(.*)$/;
@@ -130,7 +137,9 @@ export function parseMarkdown(markdown: string): MarkdownBlock[] {
         if (!itemMatch) break;
         if (checklist) {
           items.push({
-            checked: taskMatch ? taskMatch[1].toLocaleLowerCase() === 'x' : null,
+            checked: taskMatch
+              ? taskMatch[1].toLocaleLowerCase() === 'x'
+              : null,
             content: parseInline(taskMatch?.[2] ?? itemMatch[1]),
           });
         } else {

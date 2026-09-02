@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Crepe } from '@milkdown/crepe';
-import { normalizeWikiLinkMarkdown, rankTitles } from '@bigmind/markdown';
+import { normalizeWikiLinks, rankTitles } from '@bigmind/markdown';
 
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
@@ -117,7 +117,7 @@ export function MarkdownEditor({
     editor.on((listener) => {
       listener.markdownUpdated((_context, markdown, previousMarkdown) => {
         if (markdown !== previousMarkdown) {
-          onChangeRef.current(normalizeWikiLinkMarkdown(markdown));
+          onChangeRef.current(normalizeWikiLinks(markdown));
           scheduleWikiLinkTrigger();
         }
       });

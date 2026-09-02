@@ -29,7 +29,8 @@ Notes tab (native stack)
       edit mode
         ├── title input + category picker (shared CategoryRepository)
         ├── MarkdownEditView (OPTION B editor) or TodoListView
-        ├── save (validated by shared noteDataSchema) / cancel / delete
+        ├── debounced autosave → shared NoteRepository (backlinks/wiki links/sync op)
+        └── done / cancel / delete (save validated by shared noteDataSchema)
 ```
 
 ## Read Mode
@@ -113,7 +114,7 @@ A note with unresolved changes shows a **conflict banner** when either
 - an **open** `ConflictRecord` exists for the entity
   (`conflictRepository.listOpen()` filtered by `entityId`).
 
-The banner is an *indicator only*: tapping it reports that conflict review is
+The banner is an _indicator only_: tapping it reports that conflict review is
 the future conflict screen seam. **Resolution is not implemented** (web has
 `/conflicts`; mobile gets it in a follow-up using the same shared
 `ConflictRepository`).
@@ -123,15 +124,15 @@ the future conflict screen seam. **Resolution is not implemented** (web has
 All entry points reuse the existing stacks (React Navigation, no new
 navigation infrastructure):
 
-| From                        | To                     | Mechanism                                    |
-| --------------------------- | ---------------------- | -------------------------------------------- |
-| Notes List                  | Note Detail            | `NotesNavigator.push`                        |
-| Categories → CategoryDetail | Note Detail            | cross-tab `navigate('Notes', …)`             |
-| Reminder (detail)           | Linked Note            | cross-tab `navigate('Notes', …)`             |
-| Wiki link                   | Target Note            | `NoteDetail.push` (same stack)               |
-| Backlink                    | Source Note            | `NoteDetail.push` (same stack)               |
-| Note Detail (category chip) | Category Detail        | cross-tab `navigate('Categories', …)`        |
-| Note Detail → reminder      | Reminder Detail / Form | cross-tab `navigate('Reminders', …)`         |
+| From                        | To                     | Mechanism                             |
+| --------------------------- | ---------------------- | ------------------------------------- |
+| Notes List                  | Note Detail            | `NotesNavigator.push`                 |
+| Categories → CategoryDetail | Note Detail            | cross-tab `navigate('Notes', …)`      |
+| Reminder (detail)           | Linked Note            | cross-tab `navigate('Notes', …)`      |
+| Wiki link                   | Target Note            | `NoteDetail.push` (same stack)        |
+| Backlink                    | Source Note            | `NoteDetail.push` (same stack)        |
+| Note Detail (category chip) | Category Detail        | cross-tab `navigate('Categories', …)` |
+| Note Detail → reminder      | Reminder Detail / Form | cross-tab `navigate('Reminders', …)`  |
 
 ## Offline Behavior
 
@@ -156,9 +157,17 @@ Verified by tests: with the engine offline (`mobileSyncEngine.setOnline(false)`)
 
 ## Future Editor Foundation
 
-This screen is the foundation the upcoming editor milestones build on:
+This screen is the foundation the editor milestones build on:
 
-- **Editor integration**: edit mode already hosts the shipped Option-B editor
+- **Editor (v1, shipped)**: edit mode hosts the Option-B editor
+  (`MarkdownEditView`/`TodoListView`) with a full formatting toolbar
+  (cursor-safe string transforms from `@bigmind/markdown`) and **debounced
+  autosave**: 700 ms after the last keystroke the draft is written through the
+  shared `NoteRepository`, which rebuilds wiki links + backlinks and coalesces
+  a sync (outbox) operation — fully offline. Leaving the screen flushes any
+  pending draft. Richer editors (tables, reminders integration) slot into the
+  same mode without touching read mode. See [Mobile Editor
+  Evaluation](mobile-editor.md).
   (`MarkdownEditView`/`TodoListView`); richer editors (tables, category
   picker, reminders integration) slot into the same mode without touching
   read mode. See [Mobile Editor Evaluation](mobile-editor.md).
@@ -169,12 +178,13 @@ This screen is the foundation the upcoming editor milestones build on:
 
 ## Testing
 
-| Spec                                                    | Covers                                                                 |
-| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Spec                                                     | Covers                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `screens/notes/notes-experience.spec.tsx` (detail block) | read-mode loading, markdown rendering (headings/bold/checklists/wiki), wiki-link navigation, missing-link indication, backlinks + navigation, related reminders + navigation + create, category path + navigation, conflict indicator, offline readability |
-| `components/editor-experience.spec.tsx`                 | `MarkdownText` checklists + resolved/missing wiki styling               |
-| `libs/markdown` (shared)                                | checklist parsing (block shape, inline content)                          |
-| `libs/features` (shared)                                | `RemindersRepository.listForNote` workspace scoping + sorting            |
+| `components/editor-experience.spec.tsx`                  | `MarkdownText` checklists + resolved/missing wiki styling; `MarkdownEditView` toolbar actions (bold, bullet/ordered/checklist lists, code block, quote, wiki-link snippet) with cursor anchoring + wiki suggestions + preview toggle                       |
+| `screens/notes/notes-experience.spec.tsx` (autosave)     | debounced autosave of content + title, backlink rebuild, outbox sync op, fully-offline editing                                                                                                                                                             |
+| `libs/markdown` (shared)                                 | checklist parsing (block shape, inline content)                                                                                                                                                                                                            |
+| `libs/features` (shared)                                 | `RemindersRepository.listForNote` workspace scoping + sorting                                                                                                                                                                                              |
 
 Shared behavior (outbox, previews, wiki-link extraction/resolution) is covered
 by the shared suites; mobile tests verify the wiring only.

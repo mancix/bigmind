@@ -5,6 +5,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   categoryRepository,
   conflictRepository,
+  linkRepository,
+  mobileOutbox,
   noteRepository,
   remindersRepository,
 } from '../../features/data/repositories';
@@ -127,6 +129,127 @@ describe('notes experience', () => {
     });
   });
 
+  // ── Editor autosave (debounced, offline-safe) ────────────────────
+
+  it('autosaves content and title after inactivity and updates backlinks/wiki links', async () => {
+    const target = await noteRepository.create({ title: 'Target' });
+    const noteId = await noteRepository.create({
+      title: 'Draft',
+      content: 'See [[Target]]',
+    });
+
+    const { getByTestId, findByTestId } = render(
+      <NoteDetailScreen
+        navigation={
+          navigation as unknown as NativeStackScreenProps<
+            NotesStackParamList,
+            'NoteDetail'
+          >['navigation']
+        }
+        route={
+          {
+            key: 'note-detail',
+            name: 'NoteDetail',
+            params: { noteId },
+          } as unknown as NativeStackScreenProps<
+            NotesStackParamList,
+            'NoteDetail'
+          >['route']
+        }
+      />,
+    );
+
+    expect(await findByTestId('note-detail-title')).toBeTruthy();
+    fireEvent.press(getByTestId('note-edit'));
+    await findByTestId('note-title');
+
+    // Typing starts a debounce; inactivity (auto delay) flushes the draft to
+    // the shared repository WITHOUT leaving edit mode.
+    fireEvent.changeText(getByTestId('note-content'), 'See [[Target]] again');
+
+    await waitFor(
+      async () => {
+        const stored = await noteRepository.findById(noteId);
+        expect(stored?.content).toBe('See [[Target]] again');
+      },
+      { timeout: 3000 },
+    );
+
+    // Still in edit mode (autosave must not exit), and a sync op is queued.
+    expect(getByTestId('note-content')).toBeTruthy();
+    const operations = await mobileOutbox.listForEntity(noteId, 'note');
+    expect(operations.at(-1)?.payload).toMatchObject({
+      content: 'See [[Target]] again',
+    });
+
+    // Wiki links were rebuilt: Target now has a backlink from the draft.
+    const backlinks = await linkRepository.getBacklinks(target);
+    expect(backlinks.map((backlink) => backlink.id)).toContain(noteId);
+
+    // Editing the title autosaves too.
+    fireEvent.changeText(getByTestId('note-title'), 'Renamed draft');
+    await waitFor(
+      async () => {
+        const stored = await noteRepository.findById(noteId);
+        expect(stored?.title).toBe('Renamed draft');
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it('autosaves edits made fully offline (outbox queued, no network)', async () => {
+    const noteId = await noteRepository.create({
+      title: 'Offline draft',
+      content: 'v1',
+    });
+    mobileSyncEngine.setOnline(false);
+
+    const { getByTestId, findByTestId } = render(
+      <NoteDetailScreen
+        navigation={
+          navigation as unknown as NativeStackScreenProps<
+            NotesStackParamList,
+            'NoteDetail'
+          >['navigation']
+        }
+        route={
+          {
+            key: 'note-detail',
+            name: 'NoteDetail',
+            params: { noteId },
+          } as unknown as NativeStackScreenProps<
+            NotesStackParamList,
+            'NoteDetail'
+          >['route']
+        }
+      />,
+    );
+
+    expect(await findByTestId('note-detail-title')).toBeTruthy();
+    fireEvent.press(getByTestId('note-edit'));
+    await findByTestId('note-title');
+
+    fireEvent.changeText(getByTestId('note-content'), 'v2 written offline');
+
+    // Fully offline: the debounced autosave writes locally and coalesces a
+    // pending outbox update — nothing reaches the network.
+    await waitFor(
+      async () => {
+        const stored = await noteRepository.findById(noteId);
+        expect(stored?.content).toBe('v2 written offline');
+      },
+      { timeout: 3000 },
+    );
+    const operations = await mobileOutbox.listForEntity(noteId, 'note');
+    expect(operations.at(-1)?.payload).toMatchObject({
+      content: 'v2 written offline',
+    });
+    expect(operations.at(-1)?.status).toBe('pending');
+
+    // The detail screen reflects the offline save state.
+    expect(await findByTestId('note-save-state')).toBeTruthy();
+  });
+
   it('searches notes by title and content offline', async () => {
     const rust = await noteRepository.create({
       title: 'Rust notes',
@@ -211,7 +334,10 @@ describe('notes experience', () => {
   });
 
   it('deletes a note offline after confirmation', async () => {
-    const noteId = await noteRepository.create({ title: 'Draft', content: 'x' });
+    const noteId = await noteRepository.create({
+      title: 'Draft',
+      content: 'x',
+    });
     const alertSpy = jest.spyOn(Alert, 'alert');
 
     const { getByTestId, findByTestId } = render(
@@ -251,7 +377,9 @@ describe('notes experience', () => {
       style?: string;
       onPress?: () => Promise<void>;
     }[];
-    const destructive = buttons.find((button) => button.style === 'destructive');
+    const destructive = buttons.find(
+      (button) => button.style === 'destructive',
+    );
     expect(destructive?.text).toBe('Delete');
 
     await destructive?.onPress?.();
@@ -263,7 +391,10 @@ describe('notes experience', () => {
   });
 
   it('shows offline sync feedback while notes stay available', async () => {
-    await noteRepository.create({ title: 'Offline note', content: 'still here' });
+    await noteRepository.create({
+      title: 'Offline note',
+      content: 'still here',
+    });
 
     // Take the app offline at the shared sync level (connectivity provider).
     mobileSyncEngine.setOnline(false);
@@ -347,7 +478,9 @@ describe('notes experience', () => {
       title: 'Source',
       content: 'See [[Target]]',
     });
-    const target = (await noteRepository.list()).find((n) => n.title === 'Target');
+    const target = (await noteRepository.list()).find(
+      (n) => n.title === 'Target',
+    );
 
     const { findByText } = renderDetail(source);
     fireEvent.press(await findByText('[[Target]]'));
@@ -377,7 +510,10 @@ describe('notes experience', () => {
   });
 
   it('shows backlinks with a preview and navigates to the source note', async () => {
-    const target = await noteRepository.create({ title: 'Target', content: '' });
+    const target = await noteRepository.create({
+      title: 'Target',
+      content: '',
+    });
     const source = await noteRepository.create({
       title: 'Source note',
       content: 'references [[Target]] for review',
@@ -395,7 +531,10 @@ describe('notes experience', () => {
   });
 
   it('shows related reminders, navigates to them, and can create one for the note', async () => {
-    const noteId = await noteRepository.create({ title: 'Shipped', content: '' });
+    const noteId = await noteRepository.create({
+      title: 'Shipped',
+      content: '',
+    });
     const reminderId = await remindersRepository.create({
       title: 'Follow up',
       dueAt: new Date(Date.now() + 3600_000).toISOString(),
@@ -422,7 +561,10 @@ describe('notes experience', () => {
   });
 
   it('shows the category path and navigates to the category detail', async () => {
-    const root = await categoryRepository.create({ name: 'Project', icon: '🚀' });
+    const root = await categoryRepository.create({
+      name: 'Project',
+      icon: '🚀',
+    });
     const docs = await categoryRepository.create({
       name: 'Docs',
       parentId: root,
@@ -446,7 +588,10 @@ describe('notes experience', () => {
   });
 
   it('shows a conflict indicator when the note has unresolved conflicts', async () => {
-    const noteId = await noteRepository.create({ title: 'Clash', content: 'a' });
+    const noteId = await noteRepository.create({
+      title: 'Clash',
+      content: 'a',
+    });
     await conflictRepository.create({
       entityType: 'note',
       entityId: noteId,
@@ -470,7 +615,10 @@ describe('notes experience', () => {
   });
 
   it('keeps the note, backlinks and reminders readable while offline', async () => {
-    const noteId = await noteRepository.create({ title: 'Offline doc', content: 'still here' });
+    const noteId = await noteRepository.create({
+      title: 'Offline doc',
+      content: 'still here',
+    });
     const source = await noteRepository.create({
       title: 'Backlinker',
       content: 'ref [[Offline doc]]',

@@ -1,6 +1,6 @@
 # Mobile Note Editing — Technical Evaluation & Recommendation
 
-Status: **evaluation + implementation**. Fases 1–2 of the roadmap below are **shipped**: the shared `@bigmind/markdown` library, the native `MarkdownEditView` (toolbar, `[[` wiki-link suggestions, preview), `TodoListView` over the shared `TodoRepository`, and backlinks in the note detail. The recommendation (Option B) is now the implemented architecture; Phase 3 (parity & integration) remains.
+Status: **evaluation + implementation — editor shipped (v1)**. Phases 1–2 of the roadmap below are **shipped**, plus the Phase 3 editor items: the shared `@bigmind/markdown` library with pure string transforms (heading, bold, italic, inline code, bullet/ordered/checklist lists, code block, quote, link, wiki link), the native `MarkdownEditView` (formatting toolbar with cursor-safe selection anchoring, `[[` wiki-link suggestions, read/edit + preview), **debounced autosave** wired to the shared `NoteRepository` (updates wiki links/backlinks and coalesces sync operations), `TodoListView` over the shared `TodoRepository`, and backlinks in the note detail. The recommendation (Option B) is the implemented architecture; remaining Phase 3 items are polish (iOS keyboard/safe areas, conflict review screen).
 
 ---
 
@@ -139,7 +139,7 @@ No web behavior changes are proposed: Milkdown stays the web editor; `render-mar
 
 ---
 
-## 5. Migration plan (no editor code yet)
+## 5. Migration plan
 
 ### Phase 1 — Shared foundations (platform-agnostic) ✅ shipped
 
@@ -150,16 +150,16 @@ No web behavior changes are proposed: Milkdown stays the web editor; `render-mar
 
 ### Phase 2 — Editing UX (mobile only) ✅ shipped
 
-1. Replace the raw `TextInput` with `MarkdownEditView`: multiline editor + formatting toolbar (B/I/`/link/heading) implemented as **pure string transforms** over the shared tokenizer. — done (format.ts)
-2. **Wiki-link suggestion**: `[[` triggers a native suggestion list fed by the shared ranking helper; insertion writes plain `[[Title]]` text (link resolution happens server-side and via the shared `LinkRepository` on save — no editor-side graph). — done
-3. Preview toggle (edit ⇄ preview, and split option on tablets); debounced autosave (already safe via outbox coalescing). — preview toggle done; tablet split + debounced autosave pending polish
+1. Replace the raw `TextInput` with `MarkdownEditView`: multiline editor + formatting toolbar (heading, bold, italic, inline code, bullet/ordered/checklist lists, code block, quote, link, wiki link, preview) implemented as **pure string transforms** over `@bigmind/markdown` `format.ts`. Every transform returns `{ text, start, end }` so the editor **anchors the cursor/selection** to the same characters (offset math per line, marker-aware). — done
+2. **Wiki-link suggestion**: `[[` triggers a native suggestion list fed by the shared ranking helper; insertion writes plain `[[Title]]` text (link resolution happens server-side and via the shared `LinkRepository` on save — no editor-side graph). The toolbar's `[[ ]]` action inserts a `[[]]` snippet with the caret inside. — done
+3. Preview toggle (edit ⇄ preview) and **debounced autosave**: after 700 ms of inactivity in edit mode, the draft is persisted through the shared `NoteRepository.update` — which updates wiki links + backlinks and coalesces a sync (outbox) operation WITHOUT leaving edit mode. A dirty-draft check avoids no-op saves; leaving the screen flushes a pending draft so navigation never loses content. — done
 4. `TODO_LIST` notes: native `TodoListView` over the shared todo repository (create/check/reorder), mirroring the web `TodoEditor`. — done
 
 ### Phase 3 — Parity & integration
 
 1. iOS polish (keyboard avoidance, safe areas, Smart Punctuation off), RTL-safe rendering.
-2. Reminders integration from note detail (native modal, `linkedNoteId`), category picker refinements, backlinks/outgoing links panel in the detail (shared `LinkRepository`).
-3. Activate sync (SQLite `StorageAdapter` + `@bigmind/sync` supervisor) so edits flow end-to-end; conflict review screen.
+2. Reminders integration from note detail (native modal, `linkedNoteId`), category picker refinements, backlinks/outgoing links panel in the detail (shared `LinkRepository`). — backlinks panel, related reminders, category picker, wiki-link navigation shipped in the note detail
+3. Activate sync (SQLite `StorageAdapter` + `@bigmind/sync` supervisor) so edits flow end-to-end; conflict review screen. — sync engine + autosave end-to-end shipped; conflict _review_ screen remains
 4. Optional: re-implement web preview HTML over the shared tokenizer to remove `render-markdown.ts` divergence; keep WebView+Milkdown only as a documented escape hatch for future features the tokenizer cannot cover.
 
 ---

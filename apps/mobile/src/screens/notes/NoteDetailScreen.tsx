@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -51,6 +51,9 @@ type Props = CompositeScreenProps<
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type ViewMode = 'read' | 'edit';
+
+/** Debounce window for the editor's autosave (save after inactivity). */
+export const AUTOSAVE_DELAY_MS = 700;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -115,6 +118,11 @@ export function NoteDetailScreen({ navigation, route }: Props) {
     setTitle(loadedNote.title);
     setContent(loadedNote.content);
     setCategoryId(loadedNote.categoryId);
+    lastSavedRef.current = {
+      title: loadedNote.title,
+      content: loadedNote.content,
+      categoryId: loadedNote.categoryId,
+    };
     setCategories(loadedCategories);
     setNoteTitles(
       loadedNotes.map((loaded) => ({ id: loaded.id, title: loaded.title })),
@@ -133,7 +141,12 @@ export function NoteDetailScreen({ navigation, route }: Props) {
     return subscribeToDataChanges(() => void refresh());
   }, [refresh]);
 
-  const save = async () => {
+  /**
+   * Writes the current draft through the SHARED repository — which updates
+   * wiki links + backlinks and coalesces a sync (outbox) operation — without
+   * leaving edit mode.
+   */
+  const persist = useCallback(async () => {
     if (!note) return;
     setSaveState('saving');
     setError(null);
@@ -156,14 +169,63 @@ export function NoteDetailScreen({ navigation, route }: Props) {
 
     try {
       await noteRepository.update(noteId, { title, content, categoryId });
+      lastSavedRef.current = { title, content, categoryId };
+      setNote((current) =>
+        current ? { ...current, syncStatus: 'pending' } : current,
+      );
       setSaveState('saved');
-      setMode('read');
-      void refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save.');
       setSaveState('error');
     }
-  };
+  }, [note, title, content, categoryId, noteId]);
+
+  const save = useCallback(async () => {
+    await persist();
+    setMode('read');
+    void refresh();
+  }, [persist, refresh]);
+
+  // ── Debounced autosave: flush the draft after inactivity in edit mode. ──
+  // A ref keeps the latest persist without re-arming the timer on every
+  // keystroke; unmount flushes any still-dirty draft so navigating away never
+  // loses content.
+  const persistRef = useRef(persist);
+  persistRef.current = persist;
+  /** Snapshot of the last draft written to storage (initialised on load). */
+  const lastSavedRef = useRef<{
+    title: string;
+    content: string;
+    categoryId: string | null;
+  } | null>(null);
+  const dirtyRef = useRef(false);
+  dirtyRef.current =
+    mode === 'edit' &&
+    lastSavedRef.current !== null &&
+    (title !== lastSavedRef.current.title ||
+      content !== lastSavedRef.current.content ||
+      categoryId !== lastSavedRef.current.categoryId);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !dirtyRef.current) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      autosaveTimer.current = null;
+      void persistRef.current();
+    }, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    };
+  }, [mode, title, content, categoryId]);
+
+  useEffect(() => {
+    // Unmount flush: persist a dirty draft even if the debounce never fired.
+    return () => {
+      if (dirtyRef.current) void persistRef.current();
+    };
+  }, []);
 
   const confirmDelete = () => {
     Alert.alert(
@@ -228,8 +290,7 @@ export function NoteDetailScreen({ navigation, route }: Props) {
     return [...chain, category].map((c) => c.name).join(' / ');
   }, [categories, note]);
 
-  const hasConflict =
-    conflictCount > 0 || note?.syncStatus === 'conflict';
+  const hasConflict = conflictCount > 0 || note?.syncStatus === 'conflict';
 
   const openCategoryDetail = () => {
     if (note?.categoryId) {
@@ -279,10 +340,7 @@ export function NoteDetailScreen({ navigation, route }: Props) {
     >
       <View style={styles.reminderRow}>
         <Text
-          style={[
-            styles.linkTitle,
-            item.completed && styles.linkTitleDone,
-          ]}
+          style={[styles.linkTitle, item.completed && styles.linkTitleDone]}
           numberOfLines={1}
         >
           {item.completed ? '☑' : '☐'} {item.title}
@@ -429,13 +487,18 @@ export function NoteDetailScreen({ navigation, route }: Props) {
                   maxToRenderPerBatch={30}
                 />
               ) : (
-                <Text style={styles.muted}>No reminders linked to this note.</Text>
+                <Text style={styles.muted}>
+                  No reminders linked to this note.
+                </Text>
               )}
             </View>
 
             {/* ── Actions ───────────────────────────────────────────── */}
             <Pressable
-              style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.editButton,
+                pressed && styles.pressed,
+              ]}
               onPress={() => setMode('edit')}
               testID="note-edit"
             >
@@ -478,12 +541,14 @@ export function NoteDetailScreen({ navigation, route }: Props) {
                     : 'Uncategorized'}
                 </Text>
               </Pressable>
-              <Text style={styles.syncState}>
-                {note.syncStatus === 'pending'
-                  ? 'Saved locally, waiting to sync'
-                  : note.syncStatus === 'conflict'
-                    ? 'Conflict — review needed'
-                    : `Synced · v${note.version}`}
+              <Text style={styles.syncState} testID="note-save-state">
+                {saveState === 'saving'
+                  ? 'Saving…'
+                  : saveState === 'error'
+                    ? 'Save failed'
+                    : note.syncStatus === 'pending'
+                      ? 'Saved locally, waiting to sync'
+                      : `Synced · v${note.version}`}
               </Text>
             </View>
 
@@ -505,9 +570,9 @@ export function NoteDetailScreen({ navigation, route }: Props) {
               <Text style={styles.saveLabel}>
                 {saveState === 'saving'
                   ? 'Saving…'
-                  : saveState === 'saved'
-                    ? 'Saved ✓'
-                    : 'Save note'}
+                  : saveState === 'error'
+                    ? 'Retry'
+                    : 'Done'}
               </Text>
             </Pressable>
 
@@ -554,7 +619,11 @@ export function NoteDetailScreen({ navigation, route }: Props) {
             <Text style={styles.pickerTitle}>Move to category</Text>
             <FlatList
               data={[
-                { id: null as string | null, name: 'Uncategorized', icon: null },
+                {
+                  id: null as string | null,
+                  name: 'Uncategorized',
+                  icon: null,
+                },
                 ...categories,
               ]}
               keyExtractor={(item) => item.id ?? 'none'}
