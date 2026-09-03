@@ -10,7 +10,8 @@ import {
 } from '@bigmind/features';
 import { OutboxRepository, SyncStateRepository } from '@bigmind/sync';
 
-import { storage } from '../../storage';
+import { createNotificationScheduler } from '../../notifications/notification-scheduler';
+import { ReminderNotificationService } from '../../notifications/reminder-notification-service';import { storage } from '../../storage';
 import { getCachedWorkspaceId } from '../workspaces/workspace-store';
 
 /**
@@ -31,6 +32,19 @@ const mobileWorkspaceContext: WorkspaceContext = {
  */
 export const mobileOutbox = new OutboxRepository(storage);
 export const mobileSyncState = new SyncStateRepository(storage);
+
+/**
+ * Offline local notification wiring (see docs/mobile-notifications.md):
+ * the platform scheduler (native expo-notifications on device, memory in
+ * tests) plus the coordinator that keeps notifications in sync with the
+ * shared `RemindersRepository`. Passed into the repository as mutation hooks
+ * so every create/update/complete/delete schedules or cancels natively — and
+ * `reconcile()` re-converges after sync pulls (see SyncActivator).
+ */
+export const reminderNotificationService = new ReminderNotificationService(
+  createNotificationScheduler(),
+);
+
 export const noteRepository = new NoteRepository(storage, mobileOutbox);
 export const categoryRepository = new CategoryRepository(storage, mobileOutbox);
 export const linkRepository = new LinkRepository(storage, mobileOutbox);
@@ -39,6 +53,7 @@ export const remindersRepository = new RemindersRepository(
   storage,
   mobileOutbox,
   mobileWorkspaceContext,
+  reminderNotificationService,
 );
 export const notificationsRepository = new NotificationsRepository(
   storage,

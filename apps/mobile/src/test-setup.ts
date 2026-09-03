@@ -69,6 +69,47 @@ jest.mock('@react-native-community/netinfo', () => ({
 // picker's `testID`).
 (globalThis as Record<string, unknown>).__datetimepickerNextValue = null;
 
+// expo-notifications is a native module (no OS scheduler in the test
+// environment). The mock keeps an in-memory registry so `schedule`/`cancel`/
+// `listScheduled` behave like the real API. Unit tests that need deterministic
+// assertions inject the `MemoryNotificationScheduler` directly instead.
+jest.mock('expo-notifications', () => {
+  const registry = new Map();
+  return {
+    SchedulableTriggerInputTypes: { DATE: 'date' },
+    AndroidImportance: { HIGH: 4, DEFAULT: 3 },
+    setNotificationHandler: jest.fn(),
+    setNotificationChannelAsync: jest.fn().mockResolvedValue(undefined),
+    getPermissionsAsync: jest
+      .fn()
+      .mockResolvedValue({ status: 'granted', granted: true, canAskAgain: false }),
+    requestPermissionsAsync: jest
+      .fn()
+      .mockResolvedValue({ status: 'granted', granted: true }),
+    scheduleNotificationAsync: jest.fn().mockImplementation(async (request) => {
+      const { identifier, content, trigger } = request;
+      const id = identifier ?? `id-${registry.size}`;
+      registry.set(id, { content, trigger });
+      return id;
+    }),
+    cancelScheduledNotificationAsync: jest.fn().mockImplementation(async (id) => {
+      registry.delete(id);
+    }),
+    cancelAllScheduledNotificationsAsync: jest.fn().mockImplementation(async () => {
+      registry.clear();
+    }),
+    getAllScheduledNotificationsAsync: jest.fn().mockImplementation(async () =>
+      [...registry.entries()].map(([identifier, { content, trigger }]) => ({
+        identifier,
+        content,
+        trigger,
+      })),
+    ),
+    getDevicePushTokenAsync: jest.fn(),
+    getExpoPushTokenAsync: jest.fn(),
+  };
+});
+
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
   const { Pressable, Text } = require('react-native');

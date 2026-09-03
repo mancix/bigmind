@@ -124,24 +124,24 @@ outbox operations, exactly like the web PWA.
 - Rows are stateless presentational components keyed by `id`; linked note
   titles are resolved once per refresh into a `Record<noteId, title>`.
 
-## Future Notification Integration (preparation only)
+## Local Notifications (implemented)
 
-The mobile architecture is ready for local notifications without reworking the
-reminder core:
+Every reminder mutation schedules, reschedules, or cancels a **native local
+notification** on the device — fully offline, no push infrastructure:
 
-- **Notification source of truth**: the shared `Notification` record
-  (`@bigmind/storage`), `NotificationsRepository` (`@bigmind/features`), and
-  the sync outbox already support notification CRUD; `libs/sync` already
-  transports `notification` operations.
-- **Scheduling seam**: `RemindersListScreen`/`RemindersNavigator` load the
-  workspace-scoped reminder set at predictable points (mount, data-change bus,
-  pull-to-refresh, tab focus). A future `NotificationScheduler` can compute
-  due/overdue reminders from those same records and schedule
-  `expo-notifications` alarms — matching the web's "⏰ reminder" notification
-  center.
-- **Platform abstraction**: notifications belong in the mobile supervisors
-  (`apps/mobile/src/sync/supervisor.ts` pattern — AppState + NetInfo) via the
-  shared `requestBackgroundSync` bus; no repository, contract, or schema change
-  is required.
-- Explicitly **not implemented**: no local notification, alert, or
-  notification-center UI ships in this milestone.
+- **Create** → schedule a notification for `dueAt`.
+- **Edit** → reschedule in place (same `reminder:<id>` identifier).
+- **Complete** → cancel the pending notification; **reopen** → schedule again.
+- **Delete** (both the tombstone and coalesced-create paths) → cancel.
+- **Sync pulls** → `reconcile()` converges OS-scheduled notifications with the
+  local store after every sync pass and on app start.
+
+The notification core is untouched: the shared `RemindersRepository` exposes
+optional `ReminderNotificationHooks` (4th constructor arg — the web app passes
+nothing), and `apps/mobile/src/notifications/` provides the
+`NotificationScheduler` platform abstraction (`ExpoNotificationScheduler` on
+Android — OS `AlarmManager`, survives app restarts and device reboots;
+`MemoryNotificationScheduler` in tests) plus the `ReminderNotificationService`
+coordinator and `reconcile()` policy. See
+[Mobile Notifications](mobile-notifications.md) for the full architecture,
+requirements (offline, persistence, iOS future), and test matrix.

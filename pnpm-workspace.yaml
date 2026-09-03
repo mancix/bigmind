@@ -14,3 +14,9 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - expo-modules-core@55.0.26
   - expo@55.0.31
+# jest-expo's preset setup requires 'expo-modules-core' at runtime, but it is a
+# transitive dependency pnpm keeps out of the resolvable hoisted locations.
+# Public-hoisting it into the virtual store root keeps the mobile jest suite
+# working under the pnpm version used to regenerate pnpm-lock.yaml.
+publicHoistPattern:
+  - '*expo-modules-core*'

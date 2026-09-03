@@ -100,9 +100,7 @@ The note, category, and wiki-link repositories that power the web app were extra
 1. **Done** — `SqliteStorageAdapter` (`libs/storage/src/sqlite-storage-adapter.ts`) implements `StorageAdapter` over a `SqliteDriver`; schema v1 mirrors the Dexie v11 shape; versioned migrations in `libs/storage/src/sqlite-migrations.ts`.
 2. **Done** — `apps/mobile/src/storage/` now ships the storage provider (`createMobileStorageProvider`) with **SQLite as the production default** (`EXPO_PUBLIC_STORAGE_ENGINE=memory` opts back into the in-memory adapter; jest uses memory).
 3. Shared `@bigmind/sync` types and the shared `HttpSyncTransport` are already wired with the mobile auth store + workspace store; background sync triggers (AppState + NetInfo) are handled by `apps/mobile/src/sync/supervisor.ts`.
-4. Remaining platform work: notifications (expo-notifications) and any
-   follow-up schema migrations documented in [Storage Architecture](storage-architecture.md).
-   Reminders UI now ships (see [Mobile Reminders](mobile-reminders.md)).
+4. **Done** — **offline local reminder notifications** on Android (`expo-notifications`; schedule/reschedule/cancel/completion + sync reconciliation, see [Mobile Notifications](mobile-notifications.md)). Remaining platform work: iOS notification hardening and any follow-up schema migrations documented in [Storage Architecture](storage-architecture.md).
 
 ## Mobile app structure
 
@@ -146,6 +144,13 @@ apps/mobile/
         RemindersListScreen.tsx   Agenda (SectionList) over shared RemindersRepository
         ReminderDetailScreen.tsx  Title/description/due/status/linked note + actions
         ReminderFormScreen.tsx    Create/edit; offline-safe via shared repository
+    notifications/        Offline local reminder notifications (see docs/mobile-notifications.md):
+                           platform scheduler abstraction (expo-notifications native /
+                           in-memory double), reminder→notification policy + coordinator,
+                           and sync-pull reconciliation
+        notification-scheduler.ts        NotificationScheduler + Expo/Memory implementations
+        reminder-notification-service.ts ReminderNotificationHooks impl + reconcile()
+        reminder-notification-service.spec.ts  schedule/update/cancel/completion tests
     components/             Screen + Card + AuthLayout/AuthField scaffolds,
                            MarkdownText (shared tokenizer preview),
                            MarkdownEditView (toolbar + wiki suggestions +
@@ -154,7 +159,9 @@ apps/mobile/
       auth/                 api-url, token-storage (SecureStore), auth-store,
                            auth-api (shared contracts), auth-provider, auth-flow tests
       data/repositories.ts  Shared NoteRepository/CategoryRepository + outbox/sync-state
-                           wired over the mobile storage (single source for sync + UI)
+                           wired over the mobile storage (single source for sync + UI);
+                           wires the reminder notification service into the shared
+                           RemindersRepository as ReminderNotificationHooks
       workspaces/           workspace-store (AsyncStorage-selected workspace id),
                            workspace-client (shared contracts), workspace-context
                            (list/switch/create, offline-cached), workspace-roles
@@ -236,10 +243,13 @@ navigation to the Notes tab), a **create/edit form** (due date via
 edit mode a completion toggle), **complete/incomplete** toggling, and
 **delete with confirmation**. Everything is backed by the shared
 `RemindersRepository` — offline-first with outbox coalescing and workspace
-scoping — and rendered with a virtualized `SectionList`. See
-[Mobile Reminders](mobile-reminders.md) for the agenda rules, sync behavior,
-workspace integration, performance notes, and the future notification
-integration plan.
+scoping — and rendered with a virtualized `SectionList`. Every create/update/
+complete/delete also schedules, reschedules, or cancels a **native local
+notification** through the platform notification scheduler (see
+[Mobile Notifications](mobile-notifications.md) for the scheduler abstraction,
+repository hooks, reboot persistence, and sync reconciliation). See
+[Mobile Reminders](mobile-reminders.md) for the agenda rules and sync
+behavior.
 
 Validation matrices for behavior parity: `libs/features/src/repositories.spec.ts` (platform-independent), `apps/mobile/src/features/data/repositories.spec.ts` + `apps/mobile/src/screens/notes/notes-experience.spec.tsx` (mobile), plus the full web suite.
 
@@ -302,8 +312,8 @@ pnpm exec nx run @bigmind/mobile:test
 | ------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
 | `crypto.randomUUID()`     | available                   | not guaranteed on Hermes — use `expo-crypto` or a local id helper                                |
 | `navigator.onLine`        | engine online gate          | `@react-native-community/netinfo` (wired via the shared Connectivity abstraction)                |
-| Background sync           | service worker + 30s timer  | AppState listener + push (expo-notifications)                                                    |
-| Notifications UI          | browser Notification Center | expo-notifications + SQLite silo (architecture ready; see                                         |
-|                           |                             | [mobile-reminders.md](mobile-reminders.md) for the reminder→notification seam)                   |
+| Background sync           | service worker + 30s timer  | AppState listener + NetInfo (wired via the shared scheduler)                                     |
+| Notifications UI          | browser Notification Center | native local notifications via expo-notifications (shipped on Android; see                       |
+|                           |                             | [mobile-notifications.md](mobile-notifications.md) + the [mobile-reminders.md](mobile-reminders.md) row hooks) |
 | Search index (MiniSearch) | in-memory + Dexie           | keep MiniSearch (pure JS)                                                                        |
 | Rich text                 | Milkdown Crepe (web-only)   | native Markdown `TextInput` + shared renderer preview (see [mobile-editor.md](mobile-editor.md)) |

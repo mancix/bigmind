@@ -24,6 +24,26 @@ export interface UpdateReminderInput {
 }
 
 /**
+ * Optional mutation hooks invoked by {@link RemindersRepository} after a
+ * local write succeeds. Platforms use this to keep external effects in sync
+ * with reminder state — the mobile app schedules/cancels native local
+ * notifications here (see apps/mobile/src/notifications/).
+ *
+ * Hooks are best-effort: repository persistence never depends on them, and a
+ * thrown error inside a hook is swallowed by the repository (a notification
+ * failure must never break a reminder save). The web app does not pass hooks
+ * and is therefore unaffected.
+ */
+export interface ReminderNotificationHooks {
+  /** A reminder was created locally (outbox operation queued). */
+  onReminderCreated?(reminder: ReminderRecord): void | Promise<void>;
+  /** A reminder was updated locally (any field, including completion). */
+  onReminderUpdated?(reminder: ReminderRecord): void | Promise<void>;
+  /** A reminder was deleted locally (coalesced-away or tombstoned). */
+  onReminderDeleted?(reminder: ReminderRecord): void | Promise<void>;
+}
+
+/**
  * Reminder repository shared by the web app and the mobile app.
  *
  * Pure logic over the {@link StorageAdapter} + outbox abstractions — no
@@ -36,6 +56,7 @@ export class RemindersRepository {
     private readonly storage: StorageAdapter,
     private readonly outbox: SyncOutbox,
     private readonly workspace: WorkspaceContext = nullWorkspaceContext,
+    private readonly notificationHooks: ReminderNotificationHooks = {},
   ) {}
 
   async list(): Promise<ReminderRecord[]> {
@@ -87,16 +108,22 @@ export class RemindersRepository {
       );
     });
 
+    // Schedule a local notification for the new due time (best-effort).
+    await this.notify(() =>
+      this.notificationHooks.onReminderCreated?.(reminder),
+    );
     requestBackgroundSync();
     return id;
   }
 
   async update(id: string, changes: UpdateReminderInput): Promise<void> {
     const timestamp = this.now();
+    // Hoisted so the notification hook receives the post-update record.
+    let updated: ReminderRecord | undefined;
     await this.outbox.transactionWithReminders(async () => {
       const existing = await this.storage.reminders.get(id);
       if (!existing) return;
-      const updated: ReminderRecord = {
+      updated = {
         ...existing,
         title:
           changes.title !== undefined ? changes.title.trim() : existing.title,
@@ -119,6 +146,14 @@ export class RemindersRepository {
       await this.storage.reminders.put(updated);
       await this.upsertOperation(updated, timestamp);
     });
+
+    if (updated) {
+      // Reschedule for the new due time, or cancel when completed (best-effort).
+      const reminder = updated;
+      await this.notify(() =>
+        this.notificationHooks.onReminderUpdated?.(reminder),
+      );
+    }
     requestBackgroundSync();
   }
 
@@ -130,9 +165,12 @@ export class RemindersRepository {
 
   async remove(id: string): Promise<void> {
     const timestamp = this.now();
+    // Hoisted so the notification hook can cancel with the pre-delete record.
+    let existing: ReminderRecord | undefined;
     await this.outbox.transactionWithReminders(async () => {
-      const existing = await this.storage.reminders.get(id);
-      if (!existing) return;
+      existing = await this.storage.reminders.get(id);
+      const reminder = existing;
+      if (!reminder) return;
       const operations = await this.coalescableOperations(id);
       const pendingCreate = operations.find((op) => op.operation === 'create');
       if (pendingCreate) {
@@ -141,13 +179,35 @@ export class RemindersRepository {
         return;
       }
       const deleted: ReminderRecord = {
-        ...existing,
+        ...reminder,
         syncStatus: 'pending',
       };
       await this.storage.reminders.put(deleted);
       await this.outbox.add(this.createOperation('delete', deleted, timestamp));
     });
+
+    if (existing) {
+      // Cancel the local notification for the removed reminder (best-effort).
+      const reminder = existing;
+      await this.notify(() =>
+        this.notificationHooks.onReminderDeleted?.(reminder),
+      );
+    }
     requestBackgroundSync();
+  }
+
+  /**
+   * Run a notification hook best-effort: persistence must never fail because
+   * scheduling a local notification failed (e.g. permissions were denied).
+   */
+  private async notify(
+    hook: () => void | Promise<void>,
+  ): Promise<void> {
+    try {
+      await hook();
+    } catch {
+      // Swallow — notifications are an optimization over local persistence.
+    }
   }
 
   private async coalescableOperations(id: string): Promise<OutboxRecord[]> {
